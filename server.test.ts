@@ -146,6 +146,44 @@ test('Vercel Serverless Function compatibility: exported handler is directly cal
     const adminQueryRes = await request(serverlessServer, '/?mode=admin');
     assert.equal(adminQueryRes.status, 200);
     assert.ok(adminQueryRes.body.includes('<title>STARLA BUDAYA</title>'));
+
+    // Test POST /api/gemini/magic-canvas endpoint
+    const addr = serverlessServer.address();
+    assert.ok(addr && typeof addr !== 'string');
+    const postRes = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const payload = JSON.stringify({
+        prompt: 'Buatkan 3 tombol bergambar menu materi di bagian bawah',
+        slideTitle: 'Menu Materi',
+        slideIndex: 0,
+        totalSlides: 43,
+      });
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: addr.port,
+          path: '/api/gemini/magic-canvas',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+          },
+        },
+        (res) => {
+          let data = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => {
+            data += chunk;
+          });
+          res.on('end', () => resolve({ status: res.statusCode || 0, body: data }));
+        }
+      );
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
+    assert.equal(postRes.status, 200);
+    const parsedPost = JSON.parse(postRes.body);
+    assert.ok(parsedPost.fallback === true || parsedPost.mode === 'create-elements');
   } finally {
     serverlessServer.close();
   }

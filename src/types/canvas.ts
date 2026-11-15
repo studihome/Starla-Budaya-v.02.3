@@ -1,4 +1,15 @@
 // src/types/canvas.ts
+
+export type ResizeDirection =
+  | 'nw'
+  | 'n'
+  | 'ne'
+  | 'e'
+  | 'se'
+  | 's'
+  | 'sw'
+  | 'w';
+
 export type CanvasActionType =
   | 'none'
   | 'goto-slide'
@@ -13,7 +24,7 @@ export type CanvasElementType =
   | 'audio-button'
   | 'audio-hotspot';
 
-export type CanvasShadowPreset = 'none' | 'sm' | 'md' | 'lg' | 'glow';
+export type CanvasShadowPreset = 'none' | 'sm' | 'md' | 'lg' | 'xl' | 'glow';
 
 export type CanvasHoverEffect =
   | 'none'
@@ -24,8 +35,36 @@ export type CanvasHoverEffect =
   | 'zoom'
   | 'bounce';
 
+export interface CanvasElementStyle {
+  backgroundColor?: string;
+  textColor?: string;
+  fontSize?: number;
+  fontWeight?: 'normal' | 'medium' | 'bold' | 'extrabold';
+  borderRadius?: number;
+  borderWidth?: number;
+  borderColor?: string;
+  opacity?: number;
+  shadow?: CanvasShadowPreset | boolean;
+  hoverEffect?: CanvasHoverEffect;
+  objectFit?: 'cover' | 'contain' | 'fill';
+  textPosition?: 'overlay' | 'bottom' | 'top' | 'hidden';
+  iconName?: string;
+}
+
+export interface CanvasElementAction {
+  type: CanvasActionType;
+  targetSlideIndex?: number;
+  targetSlideId?: string;
+  audioUrl?: string;
+  popupTitle?: string;
+  popupBody?: string;
+  popupContent?: string;
+  externalUrl?: string;
+}
+
 export interface CanvasElement {
   id: string;
+  name?: string;
   type: CanvasElementType;
   x: number;      // Posisi horizontal dalam Persentase (0 - 100)
   y: number;      // Posisi vertikal dalam Persentase (0 - 100)
@@ -33,37 +72,47 @@ export interface CanvasElement {
   height: number; // Tinggi dalam Persentase (1 - 100)
   zIndex: number;
   locked?: boolean;
+  hidden?: boolean;
   // Konten Visual & Audio
   label?: string;
   imageUrl?: string;
   audioUrl?: string;
   // Kustomisasi Gaya UI
-  style: {
-    backgroundColor?: string;
-    textColor?: string;
-    fontSize?: number;
-    borderRadius?: number;
-    shadow?: CanvasShadowPreset | boolean;
-    hoverEffect?: CanvasHoverEffect;
-    objectFit?: 'cover' | 'contain';
-    borderWidth?: number;
-    borderColor?: string;
-    iconName?: string;
-  };
+  style: CanvasElementStyle;
   // Aksi Interaktif saat Diklik
-  action: {
-    type: CanvasActionType;
-    targetSlideIndex?: number;
-    targetSlideId?: string;
-    popupTitle?: string;
-    popupBody?: string;
-    popupContent?: string;
-    externalUrl?: string;
-  };
+  action: CanvasElementAction;
+}
+
+export interface OriginalElementOverride {
+  id: string;
+  label?: string;
+  xDeltaPct: number; // Pergeseran horizontal (%) dari posisi asli
+  yDeltaPct: number; // Pergeseran vertikal (%) dari posisi asli
+  scale?: number;    // Skala ukuran (default 1)
+  hidden: boolean;   // Jika true, elemen asli disembunyikan (Non-destructive delete)
+  customText?: string;
+  customImageUrl?: string;
+  customAudioUrl?: string;
+}
+
+export interface SlideData {
+  id: string;
+  title: string;
+  backgroundUrl?: string;
+  bgmUrl?: string;
+  elements: CanvasElement[];
+  originalOverrides: Record<string, OriginalElementOverride>;
+}
+
+export interface AppContentData {
+  projectTitle: string;
+  version: number;
+  updatedAt: string;
+  slides: SlideData[];
 }
 
 /**
- * Mengonversi nilai `style.shadow` ('none' | 'sm' | 'md' | 'lg' | 'glow' | boolean)
+ * Mengonversi nilai `style.shadow` ('none' | 'sm' | 'md' | 'lg' | 'xl' | 'glow' | boolean)
  * menjadi nilai CSS `box-shadow` yang presisi.
  */
 export function resolveCanvasShadowCss(
@@ -81,6 +130,9 @@ export function resolveCanvasShadowCss(
   if (shadow === 'lg') {
     return '0 16px 34px rgba(0, 0, 0, 0.65)';
   }
+  if (shadow === 'xl') {
+    return '0 24px 48px rgba(0, 0, 0, 0.78)';
+  }
   if (shadow === 'glow') {
     return '0 0 22px rgba(245, 158, 11, 0.78)';
   }
@@ -88,7 +140,7 @@ export function resolveCanvasShadowCss(
 }
 
 /**
- * Menormalkan nilai `style.shadow` ke salah satu preset standar ('none' | 'sm' | 'md' | 'lg' | 'glow')
+ * Menormalkan nilai `style.shadow` ke salah satu preset standar ('none' | 'sm' | 'md' | 'lg' | 'xl' | 'glow')
  * untuk ditampilkan pada dropdown Property Inspector.
  */
 export function normalizeShadowPreset(

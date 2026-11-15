@@ -43,7 +43,12 @@ import {
   updateTransientHistoryState,
   commitTransientHistoryState,
 } from '../features/canvas/canvasMath';
-import { duplicateSlideItem } from '../features/admin/adminHelpers';
+import {
+  duplicateSlideItem,
+  getConfiguredAdminPin,
+  addSlideItem,
+  deleteSlideItem,
+} from '../features/admin/adminHelpers';
 import {
   getSupabaseEnvConfig,
   isSupabaseConfigured,
@@ -60,26 +65,44 @@ import {
 
 export { getSupabaseEnvConfig, isSupabaseConfigured };
 
+export const ADMIN_PIN: string = getConfiguredAdminPin();
+
+export interface ActiveSlideView extends SlideContentItem {
+  elements: CanvasElementItem[];
+}
+
 export interface ContentContextValue {
   content: ContentSchema;
   isUsingFallback: boolean;
   storageSource: 'supabase' | 'localStorage' | 'default';
   isSyncing: boolean;
+  isSaving: boolean;
   lastSyncError: string | null;
   isCanvasEditMode: boolean;
   setIsCanvasEditMode: (enabled: boolean) => void;
+  isEditMode: boolean;
+  setIsEditMode: (enabled: boolean) => void;
   isGridSnapEnabled: boolean;
   setIsGridSnapEnabled: (enabled: boolean) => void;
+  snapEnabled: boolean;
+  setSnapEnabled: (enabled: boolean) => void;
   selectedCanvasItemId: string | null;
   setSelectedCanvasItemId: (id: string | null) => void;
+  selectedElementId: string | null;
+  setSelectedElementId: (id: string | null) => void;
   activeCanvasSlideId: string;
   setActiveCanvasSlideId: (slideId: string) => void;
+  activeSlideIndex: number;
+  setActiveSlideIndex: (index: number) => void;
+  activeSlide: ActiveSlideView;
   canUndo: boolean;
   canRedo: boolean;
   undoCount: number;
   redoCount: number;
   undoContent: () => void;
   redoContent: () => void;
+  undo: () => void;
+  redo: () => void;
   updateContent: (updater: ContentUpdater) => void;
   updateSlideContent: (
     slideId: string,
@@ -108,8 +131,16 @@ export interface ContentContextValue {
     slideId: string,
     elementInput: Partial<CanvasElementItem> & { type: CanvasElementType }
   ) => CanvasElementItem;
+  addElement: (
+    type: CanvasElementType,
+    customPatch?: Partial<CanvasElementItem>
+  ) => CanvasElementItem;
   updateCanvasElement: (
     slideId: string,
+    elementId: string,
+    patch: Partial<CanvasElementItem>
+  ) => void;
+  commitElementUpdate: (
     elementId: string,
     patch: Partial<CanvasElementItem>
   ) => void;
@@ -120,6 +151,7 @@ export interface ContentContextValue {
   ) => void;
   commitToHistory: () => void;
   deleteCanvasElement: (slideId: string, elementId: string) => void;
+  deleteElement: (elementId: string) => void;
   duplicateCanvasElement: (
     slideId: string,
     elementId: string
@@ -132,37 +164,59 @@ export interface ContentContextValue {
   toggleCanvasElementLock: (slideId: string, elementId: string) => void;
   resetSlideContent: (slideId: string) => void;
   duplicateSlide: (slideId: string) => string | null;
+  addSlide: () => string;
+  deleteSlide: (index: number) => void;
   saveContentToCloud: (
     newContent?: ContentSchema | Partial<ContentSchema>
   ) => Promise<SaveContentResult>;
+  saveToCloud: () => Promise<boolean>;
   uploadMediaToCloud: (
     file: File | Blob,
     customFileName?: string
   ) => Promise<UploadMediaResult>;
+  uploadMediaFile: (file: File | Blob) => Promise<string>;
   refreshContentFromCloud: () => Promise<FetchContentResult>;
   resetContent: () => void;
 }
+
+const defaultFirstSlideId = defaultContent.slideOrder[0] || '5dLAzY4SKGI';
+const defaultFirstSlide = defaultContent.slides[defaultFirstSlideId];
 
 export const ContentContext = createContext<ContentContextValue>({
   content: defaultContent,
   isUsingFallback: true,
   storageSource: 'default',
   isSyncing: false,
+  isSaving: false,
   lastSyncError: null,
   isCanvasEditMode: false,
   setIsCanvasEditMode: () => {},
+  isEditMode: false,
+  setIsEditMode: () => {},
   isGridSnapEnabled: true,
   setIsGridSnapEnabled: () => {},
+  snapEnabled: true,
+  setSnapEnabled: () => {},
   selectedCanvasItemId: null,
   setSelectedCanvasItemId: () => {},
-  activeCanvasSlideId: defaultContent.slideOrder[0] || '5dLAzY4SKGI',
+  selectedElementId: null,
+  setSelectedElementId: () => {},
+  activeCanvasSlideId: defaultFirstSlideId,
   setActiveCanvasSlideId: () => {},
+  activeSlideIndex: 0,
+  setActiveSlideIndex: () => {},
+  activeSlide: {
+    ...defaultFirstSlide,
+    elements: defaultFirstSlide?.canvasElements || [],
+  },
   canUndo: false,
   canRedo: false,
   undoCount: 0,
   redoCount: 0,
   undoContent: () => {},
   redoContent: () => {},
+  undo: () => {},
+  redo: () => {},
   updateContent: () => {},
   updateSlideContent: () => {},
   updateQuizQuestion: () => {},
@@ -175,26 +229,34 @@ export const ContentContext = createContext<ContentContextValue>({
   restoreNativeElement: () => {},
   addCanvasElement: (_slideId, elementInput) =>
     createDefaultCanvasElement(elementInput.type, 0, elementInput),
+  addElement: (type, customPatch) =>
+    createDefaultCanvasElement(type, 0, customPatch),
   updateCanvasElement: () => {},
+  commitElementUpdate: () => {},
   updateElementTransient: () => {},
   commitToHistory: () => {},
   deleteCanvasElement: () => {},
+  deleteElement: () => {},
   duplicateCanvasElement: () => null,
   reorderCanvasElementLayer: () => {},
   toggleCanvasElementLock: () => {},
   resetSlideContent: () => {},
   duplicateSlide: () => null,
+  addSlide: () => defaultFirstSlideId,
+  deleteSlide: () => {},
   saveContentToCloud: async (newContent) => ({
     success: true,
     source: 'localStorage',
     content: (newContent as ContentSchema) ?? defaultContent,
   }),
+  saveToCloud: async () => true,
   uploadMediaToCloud: async () => ({
     success: false,
     url: '',
     path: '',
     source: 'localStorage',
   }),
+  uploadMediaFile: async () => '',
   refreshContentFromCloud: async () => ({
     content: defaultContent,
     supabaseContent: null,
@@ -517,7 +579,10 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
         slideId,
         elementInput
       );
-      commitContentChange(() => nextSchema);
+      contentRef.current = nextSchema;
+      commitContentChange(
+        (prev) => applyAddCanvasElement(prev, slideId, createdElement).nextSchema
+      );
       setSelectedCanvasItemId(createdElement.id);
       return createdElement;
     },
@@ -687,6 +752,112 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
     syncContentToLiveDom(defaultContent);
   }, []);
 
+  const activeSlideIndex = useMemo(() => {
+    const idx = content.slideOrder.indexOf(activeCanvasSlideId);
+    return idx >= 0 ? idx : 0;
+  }, [content.slideOrder, activeCanvasSlideId]);
+
+  const setActiveSlideIndex = useCallback(
+    (index: number) => {
+      const targetId = contentRef.current.slideOrder[index];
+      if (targetId) {
+        setActiveCanvasSlideId(targetId);
+        setSelectedCanvasItemId(null);
+      }
+    },
+    []
+  );
+
+  const activeSlide = useMemo<ActiveSlideView>(() => {
+    const slideObj =
+      content.slides[activeCanvasSlideId] ||
+      content.slides[content.slideOrder[0]] ||
+      defaultFirstSlide;
+    return {
+      ...slideObj,
+      elements: slideObj?.canvasElements || [],
+    };
+  }, [content.slides, content.slideOrder, activeCanvasSlideId]);
+
+  const addElement = useCallback(
+    (
+      type: CanvasElementType,
+      customPatch?: Partial<CanvasElementItem>
+    ): CanvasElementItem => {
+      const targetSlideId =
+        activeCanvasSlideId || contentRef.current.slideOrder[0];
+      return addCanvasElement(targetSlideId, {
+        ...customPatch,
+        type,
+      });
+    },
+    [activeCanvasSlideId, addCanvasElement]
+  );
+
+  const commitElementUpdate = useCallback(
+    (elementId: string, patch: Partial<CanvasElementItem>) => {
+      const targetSlideId =
+        activeCanvasSlideId || contentRef.current.slideOrder[0];
+      updateCanvasElement(targetSlideId, elementId, patch);
+    },
+    [activeCanvasSlideId, updateCanvasElement]
+  );
+
+  const deleteElement = useCallback(
+    (elementId: string) => {
+      const targetSlideId =
+        activeCanvasSlideId || contentRef.current.slideOrder[0];
+      deleteCanvasElement(targetSlideId, elementId);
+    },
+    [activeCanvasSlideId, deleteCanvasElement]
+  );
+
+  const addSlide = useCallback((): string => {
+    const nextNum = contentRef.current.slideOrder.length + 1;
+    const { nextSchema, createdSlideId } = addSlideItem(contentRef.current, {
+      title: `Slide Eksplorasi #${nextNum}`,
+      instructions: [`Slide Eksplorasi #${nextNum}`],
+    });
+    contentRef.current = nextSchema;
+    commitContentChange(() => nextSchema);
+    setActiveCanvasSlideId(createdSlideId);
+    return createdSlideId;
+  }, [commitContentChange]);
+
+  const deleteSlide = useCallback(
+    (index: number) => {
+      const targetId = contentRef.current.slideOrder[index];
+      if (!targetId) return;
+      const nextSchema = deleteSlideItem(contentRef.current, targetId);
+      contentRef.current = nextSchema;
+      commitContentChange(() => nextSchema);
+      const fallbackId =
+        nextSchema.slideOrder[Math.max(0, index - 1)] ||
+        nextSchema.slideOrder[0];
+      if (fallbackId) {
+        setActiveCanvasSlideId(fallbackId);
+      }
+    },
+    [commitContentChange]
+  );
+
+  const saveToCloud = useCallback(async (): Promise<boolean> => {
+    const res = await saveContentToCloud();
+    return res.source === 'supabase';
+  }, [saveContentToCloud]);
+
+  const uploadMediaFile = useCallback(
+    async (file: File | Blob): Promise<string> => {
+      const fileName =
+        'name' in file && typeof file.name === 'string'
+          ? file.name
+          : 'media-upload';
+      const res = await uploadMediaToCloud(file, fileName);
+      return res.url;
+    },
+    [uploadMediaToCloud]
+  );
+
   useEffect(() => {
     syncContentToLiveDom(content);
   }, [content]);
@@ -697,21 +868,33 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
       isUsingFallback: storageSource !== 'supabase',
       storageSource,
       isSyncing,
+      isSaving: isSyncing,
       lastSyncError,
       isCanvasEditMode,
       setIsCanvasEditMode,
+      isEditMode: isCanvasEditMode,
+      setIsEditMode: setIsCanvasEditMode,
       isGridSnapEnabled,
       setIsGridSnapEnabled,
+      snapEnabled: isGridSnapEnabled,
+      setSnapEnabled: setIsGridSnapEnabled,
       selectedCanvasItemId,
       setSelectedCanvasItemId,
+      selectedElementId: selectedCanvasItemId,
+      setSelectedElementId: setSelectedCanvasItemId,
       activeCanvasSlideId,
       setActiveCanvasSlideId,
+      activeSlideIndex,
+      setActiveSlideIndex,
+      activeSlide,
       canUndo: historyState.past.length > 0,
       canRedo: historyState.future.length > 0,
       undoCount: historyState.past.length,
       redoCount: historyState.future.length,
       undoContent,
       redoContent,
+      undo: undoContent,
+      redo: redoContent,
       updateContent,
       updateSlideContent,
       updateQuizQuestion,
@@ -723,17 +906,24 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
       hideNativeElement,
       restoreNativeElement,
       addCanvasElement,
+      addElement,
       updateCanvasElement,
+      commitElementUpdate,
       updateElementTransient,
       commitToHistory,
       deleteCanvasElement,
+      deleteElement,
       duplicateCanvasElement,
       reorderCanvasElementLayer,
       toggleCanvasElementLock,
       resetSlideContent,
       duplicateSlide,
+      addSlide,
+      deleteSlide,
       saveContentToCloud,
+      saveToCloud,
       uploadMediaToCloud,
+      uploadMediaFile,
       refreshContentFromCloud,
       resetContent,
     }),
@@ -746,6 +936,9 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
       isGridSnapEnabled,
       selectedCanvasItemId,
       activeCanvasSlideId,
+      activeSlideIndex,
+      setActiveSlideIndex,
+      activeSlide,
       historyState.past.length,
       historyState.future.length,
       undoContent,
@@ -761,17 +954,24 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
       hideNativeElement,
       restoreNativeElement,
       addCanvasElement,
+      addElement,
       updateCanvasElement,
+      commitElementUpdate,
       updateElementTransient,
       commitToHistory,
       deleteCanvasElement,
+      deleteElement,
       duplicateCanvasElement,
       reorderCanvasElementLayer,
       toggleCanvasElementLock,
       resetSlideContent,
       duplicateSlide,
+      addSlide,
+      deleteSlide,
       saveContentToCloud,
+      saveToCloud,
       uploadMediaToCloud,
+      uploadMediaFile,
       refreshContentFromCloud,
       resetContent,
     ]

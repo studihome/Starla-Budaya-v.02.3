@@ -973,7 +973,64 @@ test('60 FPS Pointer Drag & Resize (move & resize-se) + updateElementTransient +
   assert.deepEqual(afterUndo.present, { x: 20, y: 30 });
 });
 
+test('Magic AI Studio: generateMagicCanvasAiLocal generates 3 bottom menu buttons and updates popup content accurately', async () => {
+  const {
+    generateMagicCanvasAiLocal,
+    normalizeAiCanvasElement,
+  } = await import('./features/ai/magicAiEngine');
 
+  // 1. Prompt: "Buatkan 3 tombol bergambar menu materi di bagian bawah"
+  const resButtons = generateMagicCanvasAiLocal({
+    prompt: 'Buatkan 3 tombol bergambar menu materi di bagian bawah',
+    slideId: '5iew2M44w24',
+    slideTitle: 'Menu Materi Starla Budaya',
+    existingElementCount: 0,
+  });
 
+  assert.equal(resButtons.mode, 'create-elements');
+  assert.equal(resButtons.elements.length, 3);
+  resButtons.elements.forEach((el) => {
+    assert.equal(el.type, 'image-button');
+    assert.ok(el.x >= 0 && el.x <= 100);
+    assert.equal(el.y, 78); // Bottom position
+    assert.ok(el.width >= 1 && el.width <= 100);
+    assert.ok(el.height >= 1 && el.height <= 100);
+    assert.equal(el.action.type, 'open-popup');
+    assert.ok(el.action.popupTitle && el.action.popupTitle.length > 0);
+    assert.ok(el.action.popupContent && el.action.popupContent.length > 10);
+  });
+
+  // 2. Prompt: "Buatkan isi materi pop-up untuk tombol ini"
+  const sampleTarget = normalizeAiCanvasElement(
+    {
+      type: 'image-button',
+      label: 'Rumah Adat Tongkonan',
+      x: 20,
+      y: 78,
+      width: 24,
+      height: 12,
+    },
+    0
+  );
+
+  const resPopup = generateMagicCanvasAiLocal({
+    prompt: 'Buatkan isi materi pop-up untuk tombol ini',
+    slideId: '5iew2M44w24',
+    slideTitle: 'Eksplorasi Rumah Adat',
+    existingElementCount: 1,
+    selectedElement: sampleTarget,
+  });
+
+  assert.equal(resPopup.mode, 'update-selected-popup');
+  assert.ok(resPopup.popupUpdate?.popupTitle.includes('Rumah Adat Tongkonan'));
+  assert.ok(
+    resPopup.popupUpdate?.popupContent &&
+      resPopup.popupUpdate.popupContent.length > 20
+  );
+  assert.equal(
+    resPopup.popupUpdate?.popupBody,
+    resPopup.popupUpdate?.popupContent
+  );
+});
 
 

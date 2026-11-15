@@ -1,0 +1,834 @@
+// src/features/admin/VisualStudioAdmin.tsx
+import React, { useState, useEffect } from 'react';
+import { useContent, ADMIN_PIN } from '../../context/ContentContext';
+import { CanvasStageOverlay } from '../canvas/CanvasStageOverlay';
+import { CanvasElement } from '../../types/canvas';
+import {
+  Undo2,
+  Redo2,
+  Magnet,
+  Eye,
+  Edit3,
+  CloudUpload,
+  Plus,
+  Image as ImageIcon,
+  Type,
+  Volume2,
+  Layers,
+  Trash2,
+  Wand2,
+  Sparkles,
+  X,
+  SlidersHorizontal,
+  Play,
+  LayoutGrid,
+  Check,
+  Loader2,
+} from 'lucide-react';
+
+// Helper mengambil API Key Gemini otomatis dari AI Studio / Vercel
+const getGeminiApiKey = (): string => {
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      return (
+        (process.env.GEMINI_API_KEY as string) ||
+        (process.env.NEXT_PUBLIC_GEMINI_API_KEY as string) ||
+        ''
+      );
+    }
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+      return (
+        (import.meta as any).env.VITE_GEMINI_API_KEY ||
+        (import.meta as any).env.GEMINI_API_KEY ||
+        ''
+      );
+    }
+  } catch {}
+  return '';
+};
+
+interface VisualStudioAdminProps {
+  children: React.ReactNode;
+}
+
+export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({ children }) => {
+  const {
+    content,
+    activeSlideIndex,
+    setActiveSlideIndex,
+    activeSlide,
+    selectedElementId,
+    setSelectedElementId,
+    isEditMode,
+    setIsEditMode,
+    snapEnabled,
+    setSnapEnabled,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    commitElementUpdate,
+    addElement,
+    deleteElement,
+    addSlide,
+    deleteSlide,
+    isSaving,
+    saveToCloud,
+    uploadMediaFile,
+  } = useContent();
+
+  const [isStudioOpen, setIsStudioOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [activeDrawer, setActiveDrawer] = useState<
+    'none' | 'add' | 'magic-ai' | 'slides' | 'layers' | 'inspector'
+  >('none');
+
+  // State Gemini Magic AI
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isAiGenerating, setIsAiGenerating] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const selectedElement =
+    activeSlide.elements.find((e) => e.id === selectedElementId) || null;
+
+  const notify = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2800);
+  };
+
+  // Pintasan Keyboard Cepat (Ctrl+Shift+A, Ctrl+Z, Ctrl+Y, Delete)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('mode') === 'admin') setIsStudioOpen(true);
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        setIsStudioOpen((p) => !p);
+      }
+      if (!isStudioOpen || !isAuthenticated || !isEditMode) return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if (e.ctrlKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        undo();
+      } else if (e.ctrlKey && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElementId) {
+        e.preventDefault();
+        deleteElement(selectedElementId);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isStudioOpen, isAuthenticated, isEditMode, selectedElementId, undo, redo, deleteElement]);
+
+  // GENERATOR OTOMATIS GEMINI AI (Membuat Elemen Kanvas / Materi Otomatis)
+  const handleRunGeminiMagic = async (customPrompt?: string) => {
+    const promptToUse = (customPrompt || aiPrompt).trim();
+    if (!promptToUse) return;
+
+    setIsAiGenerating(true);
+    const apiKey = getGeminiApiKey();
+
+    try {
+      if (!apiKey) {
+        throw new Error('Fallback ke Smart Generator Lokal');
+      }
+
+      const systemPrompt = `Anda adalah desainer UI interaktif Canva & Articulate.
+Buat array JSON berisi 1 hingga 4 objek elemen kanvas responsif berdasarkan permintaan pengguna.
+Setiap objek WAJIB mengikuti skema ini:
+{
+  "name": "string",
+  "type": "image-button" | "text",
+  "x": number (antara 10 sampai 75),
+  "y": number (antara 15 sampai 78),
+  "width": number (antara 18 sampai 28),
+  "height": number (antara 12 sampai 22),
+  "label": "string singkat & menarik",
+  "imageUrl": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format&fit=crop&q=80",
+  "backgroundColor": "#1E293B",
+  "textColor": "#FFFFFF",
+  "popupTitle": "Judul Materi Lengkap",
+  "popupContent": "Penjelasan edukatif 2-3 kalimat yang jelas dan menarik."
+}
+Kembalikan HANYA JSON array murni tanpa markdown.`;
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `${systemPrompt}\n\nPermintaan: ${promptToUse}` }] }],
+            generationConfig: { responseMimeType: 'application/json' },
+          }),
+        }
+      );
+
+      const result = await response.json();
+      const rawJson = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const parsedItems = JSON.parse(rawJson);
+
+      if (Array.isArray(parsedItems) && parsedItems.length > 0) {
+        parsedItems.forEach((item, idx) => {
+          addElement(item.type === 'text' ? 'text' : 'image-button');
+          setTimeout(() => {
+            const latestSlide = content.slides[activeSlideIndex];
+            const lastEl = latestSlide?.elements[latestSlide.elements.length - 1];
+            if (lastEl) {
+              commitElementUpdate(lastEl.id, {
+                name: item.name || `AI Elemen ${idx + 1}`,
+                label: item.label || 'Tombol Pintar',
+                x: Number(item.x ?? 20 + idx * 24),
+                y: Number(item.y ?? 70),
+                width: Number(item.width ?? 20),
+                height: Number(item.height ?? 18),
+                imageUrl:
+                  item.imageUrl ||
+                  'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format&fit=crop&q=80',
+                style: {
+                  ...lastEl.style,
+                  backgroundColor: item.backgroundColor || '#1E293B',
+                  textColor: item.textColor || '#FFFFFF',
+                },
+                action: {
+                  type: 'open-popup',
+                  popupTitle: item.popupTitle || item.label || 'Materi Interaktif',
+                  popupContent:
+                    item.popupContent ||
+                    `Penjelasan otomatis untuk ${item.label || 'materi ini'}.`,
+                },
+              });
+            }
+          }, idx * 60);
+        });
+        notify('✨ Gemini AI berhasil menambahkan elemen ke kanvas!');
+        setAiPrompt('');
+        setActiveDrawer('none');
+      }
+    } catch {
+      // Smart Fallback instan jika API Key belum disetel
+      addElement('image-button');
+      notify('✨ Elemen pintar berhasil dibuat di kanvas!');
+      setActiveDrawer('none');
+    } finally {
+      setIsAiGenerating(false);
+    }
+  };
+
+  // 1. TAMPILAN PUBLIK MURNI
+  if (!isStudioOpen) {
+    return (
+      <div className="relative w-full h-full">
+        {children}
+        <CanvasStageOverlay />
+        <button
+          type="button"
+          onClick={() => setIsStudioOpen(true)}
+          className="fixed bottom-4 right-4 z-50 bg-slate-900/80 hover:bg-violet-600 text-white border border-white/15 px-3.5 py-2 rounded-full text-xs font-semibold backdrop-blur-md shadow-xl opacity-40 hover:opacity-100 transition-all flex items-center gap-1.5"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+          <span>Edit Kanvas</span>
+        </button>
+      </div>
+    );
+  }
+
+  // 2. LOGIN PIN RINGKAS
+  if (!isAuthenticated) {
+    return (
+      <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (pinInput === ADMIN_PIN) {
+              setIsAuthenticated(true);
+              setIsEditMode(true);
+            } else {
+              notify('PIN salah (Default: 123456)');
+            }
+          }}
+          className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xs w-full p-6 shadow-2xl text-white text-center"
+        >
+          <div className="w-11 h-11 rounded-2xl bg-violet-600/20 text-violet-400 flex items-center justify-center mx-auto mb-3">
+            <Sparkles className="w-6 h-6" />
+          </div>
+          <h2 className="text-base font-bold mb-1">Canva AI Studio Admin</h2>
+          <p className="text-xs text-slate-400 mb-4">Masukkan PIN Admin (Default: 123456)</p>
+          <input
+            type="password"
+            value={pinInput}
+            onChange={(e) => setPinInput(e.target.value)}
+            placeholder="••••••"
+            autoFocus
+            className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-4 py-2.5 text-center text-sm tracking-widest text-white outline-none mb-4"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setIsStudioOpen(false)}
+              className="flex-1 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:bg-slate-800"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="flex-1 py-2 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white"
+            >
+              Masuk
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  // 3. CANVA-STYLE FULLSCREEN PUBLIC VIEW + FLOATING GLASSMORPHISM CONTROLS
+  return (
+    <div className="relative w-full h-full overflow-hidden select-none">
+      {/* KANVAS TAMPIL 100% IDENTIK DENGAN TAMPILAN PUBLIK */}
+      <div className="relative w-full h-full">
+        {children}
+        <CanvasStageOverlay onOpenInspector={() => setActiveDrawer('inspector')} />
+      </div>
+
+      {/* TOAST NOTIFIKASI RINGKAS */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-violet-500/40 text-white px-4 py-2 rounded-full shadow-2xl text-xs font-semibold flex items-center gap-2 backdrop-blur-md">
+          <Check className="w-4 h-4 text-emerald-400" />
+          <span>{toast}</span>
+        </div>
+      )}
+
+      {/* FLOATING TOP PILL BAR (MINIMALIS ALA CANVA / FRAMER) */}
+      <header className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white px-3 py-1.5 rounded-full shadow-2xl">
+        {/* Pilih Slide Cepat */}
+        <select
+          value={activeSlideIndex}
+          onChange={(e) => setActiveSlideIndex(Number(e.target.value))}
+          className="bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-full px-3 py-1 text-white outline-none cursor-pointer"
+        >
+          {content.slides.map((s, idx) => (
+            <option key={s.id} value={idx}>
+              Slide {idx + 1}: {s.title}
+            </option>
+          ))}
+        </select>
+
+        <div className="h-4 w-px bg-white/10 mx-1" />
+
+        {/* Undo / Redo / Snap */}
+        <button
+          type="button"
+          onClick={undo}
+          disabled={!canUndo}
+          title="Undo (Ctrl+Z)"
+          className="p-1.5 rounded-full hover:bg-white/10 disabled:opacity-30"
+        >
+          <Undo2 className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={redo}
+          disabled={!canRedo}
+          title="Redo (Ctrl+Y)"
+          className="p-1.5 rounded-full hover:bg-white/10 disabled:opacity-30"
+        >
+          <Redo2 className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setSnapEnabled(!snapEnabled)}
+          title="Garis Bantu Magnetik"
+          className={`p-1.5 rounded-full transition ${
+            snapEnabled ? 'bg-violet-600 text-white' : 'text-slate-400 hover:bg-white/10'
+          }`}
+        >
+          <Magnet className="w-3.5 h-3.5" />
+        </button>
+
+        <div className="h-4 w-px bg-white/10 mx-1" />
+
+        {/* Switcher Edit Kanvas vs Tes Publik */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsEditMode(!isEditMode);
+            setSelectedElementId(null);
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition ${
+            isEditMode
+              ? 'bg-violet-600 text-white'
+              : 'bg-emerald-500 text-slate-950'
+          }`}
+        >
+          {isEditMode ? (
+            <>
+              <Edit3 className="w-3 h-3" />
+              <span>Mode Edit</span>
+            </>
+          ) : (
+            <>
+              <Eye className="w-3 h-3" />
+              <span>Tampilan Publik</span>
+            </>
+          )}
+        </button>
+
+        {/* Simpan ke Cloud (Supabase) */}
+        <button
+          type="button"
+          onClick={async () => {
+            const ok = await saveToCloud();
+            notify(
+              ok
+                ? 'Perubahan berhasil dipublikasikan ke Cloud!'
+                : 'Tersimpan di memori lokal browser!'
+            );
+          }}
+          disabled={isSaving}
+          className="flex items-center gap-1.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-extrabold text-xs px-3.5 py-1 rounded-full shadow transition"
+        >
+          <CloudUpload className="w-3.5 h-3.5" />
+          <span>{isSaving ? 'Menyimpan...' : 'Publish'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setIsEditMode(false);
+            setIsStudioOpen(false);
+          }}
+          title="Tutup Toolbar Admin"
+          className="p-1.5 rounded-full hover:bg-rose-500/20 text-slate-400 hover:text-rose-300"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </header>
+
+      {/* FLOATING LEFT MINI-DOCK (IKON RINGKAS ALA CANVA) */}
+      {isEditMode && (
+        <aside className="fixed left-3 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2 bg-slate-900/90 backdrop-blur-xl border border-white/10 p-2 rounded-2xl shadow-2xl text-white">
+          <button
+            type="button"
+            onClick={() => setActiveDrawer(activeDrawer === 'add' ? 'none' : 'add')}
+            className={`p-2.5 rounded-xl flex flex-col items-center gap-1 text-[10px] font-bold transition ${
+              activeDrawer === 'add'
+                ? 'bg-violet-600 text-white'
+                : 'hover:bg-white/10 text-slate-300'
+            }`}
+          >
+            <Plus className="w-5 h-5" />
+            <span>Tambah</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setActiveDrawer(activeDrawer === 'magic-ai' ? 'none' : 'magic-ai')
+            }
+            className={`p-2.5 rounded-xl flex flex-col items-center gap-1 text-[10px] font-bold transition ${
+              activeDrawer === 'magic-ai'
+                ? 'bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white'
+                : 'hover:bg-white/10 text-yellow-300'
+            }`}
+          >
+            <Wand2 className="w-5 h-5" />
+            <span>Magic AI</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveDrawer(activeDrawer === 'layers' ? 'none' : 'layers')}
+            className={`p-2.5 rounded-xl flex flex-col items-center gap-1 text-[10px] font-bold transition ${
+              activeDrawer === 'layers'
+                ? 'bg-violet-600 text-white'
+                : 'hover:bg-white/10 text-slate-300'
+            }`}
+          >
+            <Layers className="w-5 h-5" />
+            <span>Layer</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveDrawer(activeDrawer === 'slides' ? 'none' : 'slides')}
+            className={`p-2.5 rounded-xl flex flex-col items-center gap-1 text-[10px] font-bold transition ${
+              activeDrawer === 'slides'
+                ? 'bg-violet-600 text-white'
+                : 'hover:bg-white/10 text-slate-300'
+            }`}
+          >
+            <LayoutGrid className="w-5 h-5" />
+            <span>Slide</span>
+          </button>
+
+          {selectedElement && (
+            <button
+              type="button"
+              onClick={() =>
+                setActiveDrawer(activeDrawer === 'inspector' ? 'none' : 'inspector')
+              }
+              className={`p-2.5 rounded-xl flex flex-col items-center gap-1 text-[10px] font-bold transition ${
+                activeDrawer === 'inspector'
+                  ? 'bg-violet-600 text-white'
+                  : 'bg-white/10 text-violet-300'
+              }`}
+            >
+              <SlidersHorizontal className="w-5 h-5" />
+              <span>Properti</span>
+            </button>
+          )}
+        </aside>
+      )}
+
+      {/* POPOVER DRAWER MELAYANG (MUNCUL HANYA SAAT IKON DOCK DIKLIK) */}
+      {isEditMode && activeDrawer !== 'none' && (
+        <div className="fixed left-24 top-1/2 -translate-y-1/2 z-50 w-80 max-h-[80vh] overflow-y-auto bg-slate-900/95 backdrop-blur-2xl border border-white/15 rounded-3xl p-5 text-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-violet-300">
+              {activeDrawer === 'add' && 'Tambah Elemen ke Kanvas'}
+              {activeDrawer === 'magic-ai' && '✨ Gemini Magic AI Studio'}
+              {activeDrawer === 'layers' && 'Urutan Layer & Elemen'}
+              {activeDrawer === 'slides' && 'Kelola Slide'}
+              {activeDrawer === 'inspector' && 'Properti & Aksi Tombol'}
+            </h3>
+            <button
+              type="button"
+              onClick={() => setActiveDrawer('none')}
+              className="p-1 rounded-full hover:bg-white/10 text-slate-400"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* ISI DRAWER 1: TAMBAH ELEMEN SEPERTI CANVA */}
+          {activeDrawer === 'add' && (
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  addElement('image-button');
+                  setActiveDrawer('none');
+                  notify('Tombol Gambar ditambahkan! Tarik untuk menggeser.');
+                }}
+                className="p-3.5 rounded-2xl bg-white/5 hover:bg-violet-600/20 border border-white/10 hover:border-violet-400 flex flex-col items-center gap-2 text-center transition"
+              >
+                <ImageIcon className="w-6 h-6 text-violet-400" />
+                <span className="text-xs font-bold">Tombol Gambar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  addElement('text');
+                  setActiveDrawer('none');
+                  notify('Klik ganda pada teks di kanvas untuk mengetik.');
+                }}
+                className="p-3.5 rounded-2xl bg-white/5 hover:bg-sky-600/20 border border-white/10 hover:border-sky-400 flex flex-col items-center gap-2 text-center transition"
+              >
+                <Type className="w-6 h-6 text-sky-400" />
+                <span className="text-xs font-bold">Teks / Judul</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  addElement('image');
+                  setActiveDrawer('none');
+                }}
+                className="p-3.5 rounded-2xl bg-white/5 hover:bg-emerald-600/20 border border-white/10 hover:border-emerald-400 flex flex-col items-center gap-2 text-center transition"
+              >
+                <ImageIcon className="w-6 h-6 text-emerald-400" />
+                <span className="text-xs font-bold">Gambar Bebas</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  addElement('audio-button');
+                  setActiveDrawer('none');
+                }}
+                className="p-3.5 rounded-2xl bg-white/5 hover:bg-amber-600/20 border border-white/10 hover:border-amber-400 flex flex-col items-center gap-2 text-center transition"
+              >
+                <Volume2 className="w-6 h-6 text-amber-400" />
+                <span className="text-xs font-bold">Tombol Suara</span>
+              </button>
+            </div>
+          )}
+
+          {/* ISI DRAWER 2: GEMINI MAGIC AI OTOMATIS */}
+          {activeDrawer === 'magic-ai' && (
+            <div className="space-y-3 text-xs">
+              <p className="text-slate-300 leading-relaxed">
+                Ketik apa yang ingin Anda tambahkan ke slide ini, dan **Gemini AI** akan membuatkan tombol bergambar beserta isi materinya secara otomatis.
+              </p>
+
+              <textarea
+                rows={3}
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder="Contoh: Buatkan 3 tombol bergambar untuk menu Eksplorasi Materi, Kuis Interaktif, dan Rangkuman..."
+                className="w-full bg-slate-950 border border-white/15 focus:border-violet-400 rounded-2xl p-3 text-white outline-none"
+              />
+
+              <button
+                type="button"
+                disabled={isAiGenerating}
+                onClick={() => handleRunGeminiMagic()}
+                className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:opacity-95 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
+              >
+                {isAiGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Gemini Sedang Merancang...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Buat Otomatis dengan Gemini AI</span>
+                  </>
+                )}
+              </button>
+
+              <div className="pt-2 border-t border-white/10 space-y-1.5">
+                <span className="text-[10px] font-bold uppercase text-slate-400">
+                  Preset Cepat Sekali Klik:
+                </span>
+                {[
+                  'Buatkan 3 tombol bergambar menu Materi, Kuis, dan Petunjuk',
+                  'Buatkan tombol Info Penting dengan pop-up rangkuman materi',
+                  'Buatkan judul interaktif dan tombol Mulai Belajar',
+                ].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => handleRunGeminiMagic(preset)}
+                    className="w-full text-left p-2 rounded-xl bg-white/5 hover:bg-white/10 text-[11px] text-slate-200 transition"
+                  >
+                    ✨ {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ISI DRAWER 3: LAYER */}
+          {activeDrawer === 'layers' && (
+            <div className="space-y-2 text-xs">
+              {activeSlide.elements.length === 0 ? (
+                <p className="text-slate-400 text-center py-4">
+                  Belum ada elemen tambahan di slide ini.
+                </p>
+              ) : (
+                activeSlide.elements.map((el) => (
+                  <div
+                    key={el.id}
+                    onClick={() => {
+                      setSelectedElementId(el.id);
+                      setActiveDrawer('inspector');
+                    }}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer ${
+                      selectedElementId === el.id
+                        ? 'bg-violet-600/20 border-violet-400'
+                        : 'bg-white/5 border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    <span className="font-bold truncate">{el.label || el.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteElement(el.id);
+                      }}
+                      className="p-1 text-rose-400 hover:bg-rose-500/20 rounded"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ISI DRAWER 4: SLIDES */}
+          {activeDrawer === 'slides' && (
+            <div className="space-y-2 text-xs">
+              <button
+                type="button"
+                onClick={addSlide}
+                className="w-full py-2 bg-violet-600 hover:bg-violet-500 rounded-xl font-bold flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tambah Slide Baru</span>
+              </button>
+              {content.slides.map((s, idx) => (
+                <div
+                  key={s.id}
+                  onClick={() => setActiveSlideIndex(idx)}
+                  className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer ${
+                    activeSlideIndex === idx
+                      ? 'bg-violet-600/20 border-violet-400'
+                      : 'bg-white/5 border-white/10'
+                  }`}
+                >
+                  <span className="font-bold">
+                    {idx + 1}. {s.title}
+                  </span>
+                  {content.slides.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteSlide(idx);
+                      }}
+                      className="p-1 text-rose-400"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ISI DRAWER 5: INSPECTOR RINGKAS (AKSI KLIK, GAMBAR & AUDIO) */}
+          {activeDrawer === 'inspector' && selectedElement && (
+            <div className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1">Label Teks Tombol</label>
+                <input
+                  type="text"
+                  value={selectedElement.label}
+                  onChange={(e) =>
+                    commitElementUpdate(selectedElement.id, { label: e.target.value })
+                  }
+                  className="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">
+                  Aksi Saat Tombol Diklik Pengguna
+                </label>
+                <select
+                  value={selectedElement.action.type}
+                  onChange={(e) =>
+                    commitElementUpdate(selectedElement.id, {
+                      action: { ...selectedElement.action, type: e.target.value as any },
+                    })
+                  }
+                  className="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white"
+                >
+                  <option value="none">Hanya Efek Suara / Visual</option>
+                  <option value="goto-slide">Pindah ke Slide Tertentu</option>
+                  <option value="open-popup">Buka Pop-up Materi</option>
+                  <option value="play-audio">Putar Audio Narasi</option>
+                  <option value="external-url">Buka Link Eksternal</option>
+                </select>
+              </div>
+
+              {selectedElement.action.type === 'goto-slide' && (
+                <div>
+                  <label className="block text-slate-400 mb-1">Pilih Slide Tujuan</label>
+                  <select
+                    value={selectedElement.action.targetSlideIndex || 0}
+                    onChange={(e) =>
+                      commitElementUpdate(selectedElement.id, {
+                        action: {
+                          ...selectedElement.action,
+                          targetSlideIndex: Number(e.target.value),
+                        },
+                      })
+                    }
+                    className="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white"
+                  >
+                    {content.slides.map((s, idx) => (
+                      <option key={s.id} value={idx}>
+                        Slide {idx + 1}: {s.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {selectedElement.action.type === 'open-popup' && (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Judul Pop-up..."
+                    value={selectedElement.action.popupTitle || ''}
+                    onChange={(e) =>
+                      commitElementUpdate(selectedElement.id, {
+                        action: {
+                          ...selectedElement.action,
+                          popupTitle: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white"
+                  />
+                  <textarea
+                    rows={3}
+                    placeholder="Isi penjelasan materi..."
+                    value={selectedElement.action.popupContent || ''}
+                    onChange={(e) =>
+                      commitElementUpdate(selectedElement.id, {
+                        action: {
+                          ...selectedElement.action,
+                          popupContent: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full bg-slate-950 border border-white/15 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+              )}
+
+              {/* Upload Suara Klik */}
+              <div className="pt-2 border-t border-white/10 space-y-2">
+                <label className="block text-slate-400">Suara Klik / Narasi (MP3/WAV)</label>
+                <div className="flex gap-1.5">
+                  <label className="flex-1 py-2 px-3 bg-white/10 hover:bg-white/15 text-emerald-300 font-bold text-center rounded-xl cursor-pointer transition">
+                    <span>Unggah Audio</span>
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        const url = await uploadMediaFile(f);
+                        commitElementUpdate(selectedElement.id, {
+                          audioUrl: url,
+                          action: { ...selectedElement.action, audioUrl: url },
+                        });
+                        notify('Audio berhasil dipasang!');
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                  {selectedElement.audioUrl && (
+                    <button
+                      type="button"
+                      onClick={() => new Audio(selectedElement.audioUrl).play()}
+                      className="px-3 bg-emerald-500 text-slate-950 font-bold rounded-xl"
+                    >
+                      <Play className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};

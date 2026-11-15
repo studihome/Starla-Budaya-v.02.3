@@ -18,10 +18,34 @@ import {
 } from './adminHelpers';
 import { CanvasStageOverlay } from '../canvas/CanvasStageOverlay';
 import { clampPct } from '../canvas/canvasMath';
+import { requestMagicCanvasAi } from '../ai/magicAiEngine';
+import {
+  Undo2,
+  Redo2,
+  Magnet,
+  Eye,
+  Edit3,
+  CloudUpload,
+  Plus,
+  Image as ImageIcon,
+  Type,
+  Volume2,
+  Layers,
+  Trash2,
+  Wand2,
+  Sparkles,
+  X,
+  SlidersHorizontal,
+  Play,
+  LayoutGrid,
+  Check,
+  Loader2,
+} from 'lucide-react';
 
 export interface VisualStudioAdminProps {
-  selectedSlideId: string;
-  onSelectSlideId: (slideId: string) => void;
+  children?: React.ReactNode;
+  selectedSlideId?: string;
+  onSelectSlideId?: (slideId: string) => void;
   onOpenClassicTab?: (tab: 'quiz' | 'media' | 'meta' | 'backup') => void;
   onCloseAdmin?: () => void;
   onStatusMessage?: (
@@ -30,7 +54,7 @@ export interface VisualStudioAdminProps {
   ) => void;
 }
 
-type LeftDockTab = 'slides' | 'elements' | 'layers';
+type LeftDockTab = 'slides' | 'elements' | 'layers' | 'magic-ai';
 
 const PRESET_CULTURE_ICONS = [
   { label: 'Tanpa Ikon', value: '' },
@@ -48,6 +72,13 @@ const PRESET_STICKER_IMAGES = [
   { label: 'Ilustrasi Budaya 1', url: 'mobile/6EfvCxuLoY5.png' },
   { label: 'Karakter Starla', url: 'mobile/5WGLEVYzj2G.png' },
   { label: 'Peta Nusantara', url: 'mobile/5X5KPiU9Isy.png' },
+];
+
+const MAGIC_AI_PRESETS = [
+  'Buatkan 3 tombol bergambar menu materi di bagian bawah',
+  'Buatkan isi materi pop-up untuk tombol ini',
+  'Buatkan tombol suara narasi budaya di bagian atas',
+  'Buatkan 2 tombol eksplorasi rumah adat di tengah',
 ];
 
 function resolvePreviewAssetUrl(rawUrl: string | null | undefined): string {
@@ -91,17 +122,19 @@ function getSlideDisplayLabel(
 }
 
 /**
- * VisualStudioAdmin (`src/features/admin/VisualStudioAdmin.tsx`)
- * Antarmuka WYSIWYG Builder modern bertema Dark Studio (#0F172A) bergaya Figma / Canva Pro
- * dengan Layout 4 Zona Ergonomis:
- * 1. Top Command Bar
- * 2. Left Dock (3 Tab: Slide, Tambah Elemen, Layer & Pemulihan)
- * 3. Center Workspace (16:9 Responsive Canvas + Floating Action Toolbar + Keyboard Delete/Backspace)
- * 4. Right Property Inspector (Gambar & Label, Gaya Visual, Aksi Klik & Audio, Koordinat Presisi)
+ * VisualStudioAdmin — "Canva-Style Minimalist Floating Studio + Gemini Magic AI"
+ * 1. Tampilan Kanvas 100% Sesuai Publik (Zero-Clutter Full Public View):
+ *    - Tanpa sidebar statis yang memperkecil layar.
+ *    - Floating Top Bar minimalis (Glassmorphism) & Floating Left Mini-Dock yang membuka drawer melayang.
+ * 2. Pengalaman Edit Sepraktis Canva:
+ *    - Double-Click Inline Text Editing langsung di atas elemen kanvas.
+ *    - Floating Contextual Pill Toolbar di atas elemen terpilih (Gambar, Suara, Warna, Font, Aksi, Layer, Lock, Duplikat, Hapus).
+ * 3. Integrasi Otomatis Gemini AI ("Magic AI Studio"):
+ *    - Ketik perintah bahasa alami untuk menghasilkan JSON elemen kanvas atau materi pop-up secara otomatis.
  */
 export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
-  selectedSlideId,
-  onSelectSlideId,
+  selectedSlideId: propSelectedSlideId,
+  onSelectSlideId: propOnSelectSlideId,
   onOpenClassicTab,
   onCloseAdmin,
   onStatusMessage,
@@ -109,13 +142,13 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
   const {
     content,
     isSyncing,
-    storageSource,
     isCanvasEditMode,
     setIsCanvasEditMode,
     isGridSnapEnabled,
     setIsGridSnapEnabled,
     selectedCanvasItemId,
     setSelectedCanvasItemId,
+    activeCanvasSlideId,
     setActiveCanvasSlideId,
     canUndo,
     canRedo,
@@ -141,17 +174,21 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
     resetContent,
   } = useContent();
 
-  // Default ke Mode Edit Kanvas saat Studio dibuka agar admin bisa langsung mengedit
+  const selectedSlideId = propSelectedSlideId || activeCanvasSlideId;
+  const onSelectSlideId = (slideId: string) => {
+    setActiveCanvasSlideId(slideId);
+    propOnSelectSlideId?.(slideId);
+  };
+
   useEffect(() => {
     setIsCanvasEditMode(true);
   }, [setIsCanvasEditMode]);
 
-  // Sinkronkan activeCanvasSlideId dengan selectedSlideId
   useEffect(() => {
-    if (selectedSlideId) {
-      setActiveCanvasSlideId(selectedSlideId);
+    if (propSelectedSlideId) {
+      setActiveCanvasSlideId(propSelectedSlideId);
     }
-  }, [selectedSlideId, setActiveCanvasSlideId]);
+  }, [propSelectedSlideId, setActiveCanvasSlideId]);
 
   // Pintasan Keyboard Studio: Ctrl+Z (Undo) dan Ctrl+Y / Ctrl+Shift+Z (Redo)
   useEffect(() => {
@@ -187,7 +224,18 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [canUndo, canRedo, undoContent, redoContent]);
 
+  // Floating Left Drawer & Floating Right Inspector state (Zero-Clutter Default: Closed)
   const [leftDockTab, setLeftDockTab] = useState<LeftDockTab>('elements');
+  const [isLeftDrawerOpen, setIsLeftDrawerOpen] = useState<boolean>(false);
+  const [isRightInspectorOpen, setIsRightInspectorOpen] =
+    useState<boolean>(false);
+
+  // Magic AI Studio state
+  const [magicPrompt, setMagicPrompt] = useState<string>('');
+  const [isGeneratingMagicAi, setIsGeneratingMagicAi] =
+    useState<boolean>(false);
+  const [lastMagicSummary, setLastMagicSummary] = useState<string>('');
+
   const [slideSearchQuery, setSlideSearchQuery] = useState<string>('');
   const [newSlideTitleInput, setNewSlideTitleInput] = useState<string>('');
   const [isPlayingInspectorAudio, setIsPlayingInspectorAudio] =
@@ -290,7 +338,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
     });
   }, [content.slideOrder, content.slides, slideSearchQuery]);
 
-  // Resolusi gambar latar untuk panggung kanvas 16:9
   const stageBackgroundUrl = useMemo(() => {
     if (!currentSlide) return '';
     if (currentSlide.backgroundUrl) {
@@ -311,7 +358,16 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
     return '/mobile/Slide5WPRbcJDCqY.jpg';
   }, [activeSlideId, content.navigationConfig.slides, content.videos, currentSlide]);
 
-  // Handlers Top Command Bar & Dock
+  // Handlers
+  const handleSelectDockTab = (tab: LeftDockTab) => {
+    if (leftDockTab === tab && isLeftDrawerOpen) {
+      setIsLeftDrawerOpen(false);
+    } else {
+      setLeftDockTab(tab);
+      setIsLeftDrawerOpen(true);
+    }
+  };
+
   const handleAddElement = (
     type: CanvasElementType,
     presetPatch?: Partial<CanvasElementItem>
@@ -328,6 +384,60 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
       'info',
       `Elemen "${created.label || created.type}" ditambahkan ke kanvas Slide #${currentSlideOrderIndex + 1}.`
     );
+  };
+
+  const handleRunMagicAi = async (customPrompt?: string) => {
+    const promptToRun = (customPrompt ?? magicPrompt).trim();
+    if (!promptToRun || isGeneratingMagicAi) return;
+
+    setIsGeneratingMagicAi(true);
+    try {
+      if (!isCanvasEditMode) {
+        setIsCanvasEditMode(true);
+      }
+
+      const result = await requestMagicCanvasAi({
+        prompt: promptToRun,
+        slideId: activeSlideId,
+        slideTitle: getSlideDisplayLabel(currentSlide, currentSlideOrderIndex),
+        selectedElement: selectedCustomElement,
+        existingElementCount: canvasElements.length,
+      });
+
+      if (
+        result.mode === 'update-selected-popup' &&
+        result.popupUpdate &&
+        selectedCustomElement
+      ) {
+        updateCanvasElement(activeSlideId, selectedCustomElement.id, {
+          action: {
+            ...selectedCustomElement.action,
+            type: 'open-popup',
+            popupTitle: result.popupUpdate.popupTitle,
+            popupBody: result.popupUpdate.popupBody,
+            popupContent: result.popupUpdate.popupContent,
+          },
+        });
+        setLastMagicSummary(result.summary);
+        onStatusMessage?.('success', result.summary);
+      } else if (result.elements.length > 0) {
+        let lastCreatedId: string | null = null;
+        result.elements.forEach((el) => {
+          const created = addCanvasElement(activeSlideId, el);
+          lastCreatedId = created.id;
+        });
+        if (lastCreatedId) {
+          setSelectedCanvasItemId(lastCreatedId);
+        }
+        setLastMagicSummary(result.summary);
+        onStatusMessage?.('success', result.summary);
+      }
+      if (!customPrompt) {
+        setMagicPrompt('');
+      }
+    } finally {
+      setIsGeneratingMagicAi(false);
+    }
   };
 
   const handleCreateNewSlide = () => {
@@ -460,7 +570,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
   );
 
   // ============================================================================
-  // STYLES (DARK STUDIO #0F172A THEME DENGAN AKSEN KONTRAS TINGGI)
+  // STYLES (CANVA-STYLE FLOATING GLASSMORPHISM DARK STUDIO)
   // ============================================================================
   const studioInputStyle: React.CSSProperties = {
     width: '100%',
@@ -483,23 +593,32 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
 
   const sectionCardStyle: React.CSSProperties = {
     padding: '12px',
-    borderRadius: '8px',
-    backgroundColor: '#1E293B',
-    border: '1px solid #334155',
+    borderRadius: '10px',
+    backgroundColor: 'rgba(30, 41, 59, 0.85)',
+    border: '1px solid rgba(148, 163, 184, 0.2)',
     display: 'flex',
     flexDirection: 'column',
     gap: '10px',
+  };
+
+  const floatingGlassPanelStyle: React.CSSProperties = {
+    backgroundColor: 'rgba(11, 17, 32, 0.92)',
+    backdropFilter: 'blur(16px)',
+    border: '1px solid rgba(148, 163, 184, 0.22)',
+    borderRadius: '14px',
+    boxShadow: '0 20px 45px rgba(0, 0, 0, 0.65)',
   };
 
   return (
     <div
       data-testid="visual-studio-admin"
       style={{
+        position: 'relative',
         display: 'flex',
         flexDirection: 'column',
         width: '100%',
         height: '100%',
-        backgroundColor: '#0F172A',
+        backgroundColor: '#070B14',
         color: '#F8FAFC',
         overflow: 'hidden',
         userSelect: 'none',
@@ -512,20 +631,22 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
       />
 
       {/* ==================================================================== */}
-      {/* ZONA 1: TOP COMMAND BAR                                              */}
+      {/* ZONA 1: FLOATING TOP COMMAND BAR (GLASSMORPHISM)                     */}
       {/* ==================================================================== */}
       <header
         data-testid="studio-top-command-bar"
         style={{
-          height: '54px',
+          height: '52px',
           padding: '0 14px',
-          backgroundColor: '#090D16',
-          borderBottom: '1px solid #1E293B',
+          backgroundColor: 'rgba(9, 13, 22, 0.85)',
+          backdropFilter: 'blur(16px)',
+          borderBottom: '1px solid rgba(148, 163, 184, 0.16)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: '8px',
           flexShrink: 0,
+          zIndex: 150,
         }}
       >
         {/* Kiri: Identitas Studio, Pemilih Slide Aktif, Undo/Redo, & Toggle Grid/Snap */}
@@ -551,8 +672,9 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
               style={{
                 width: '9px',
                 height: '9px',
-                borderRadius: '2px',
+                borderRadius: '999px',
                 backgroundColor: '#F59E0B',
+                boxShadow: '0 0 8px #F59E0B',
                 display: 'inline-block',
               }}
             />
@@ -565,7 +687,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                 whiteSpace: 'nowrap',
               }}
             >
-              STARLA STUDIO
+              STARLA CANVA AI
             </span>
           </div>
 
@@ -613,7 +735,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                 color: '#F8FAFC',
                 fontSize: '11px',
                 fontWeight: 600,
-                width: '195px',
+                width: '190px',
                 cursor: 'pointer',
               }}
             >
@@ -663,7 +785,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
             </button>
           </div>
 
-          {/* Undo & Redo (Minimal 20 Langkah History Stack) */}
+          {/* Undo & Redo */}
           <div
             style={{
               display: 'flex',
@@ -749,7 +871,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
             alignItems: 'center',
             gap: '3px',
             padding: '3px',
-            borderRadius: '8px',
+            borderRadius: '999px',
             backgroundColor: '#1E293B',
             border: '1px solid #334155',
             flexShrink: 0,
@@ -760,8 +882,8 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
             data-testid="btn-mode-edit-kanvas"
             onClick={() => setIsCanvasEditMode(true)}
             style={{
-              padding: '5px 10px',
-              borderRadius: '6px',
+              padding: '5px 12px',
+              borderRadius: '999px',
               border: 'none',
               backgroundColor: isCanvasEditMode ? '#F59E0B' : 'transparent',
               color: isCanvasEditMode ? '#090D16' : '#CBD5E1',
@@ -781,8 +903,8 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
               setSelectedCanvasItemId(null);
             }}
             style={{
-              padding: '5px 10px',
-              borderRadius: '6px',
+              padding: '5px 12px',
+              borderRadius: '999px',
               border: 'none',
               backgroundColor: !isCanvasEditMode ? '#10B981' : 'transparent',
               color: !isCanvasEditMode ? '#052E16' : '#CBD5E1',
@@ -800,8 +922,8 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
             title="Switch Mode Edit / Live Preview"
             onClick={() => setIsCanvasEditMode(!isCanvasEditMode)}
             style={{
-              padding: '5px 7px',
-              borderRadius: '6px',
+              padding: '5px 8px',
+              borderRadius: '999px',
               border: '1px solid #334155',
               backgroundColor: '#0F172A',
               color: '#94A3B8',
@@ -889,118 +1011,206 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
       </header>
 
       {/* ==================================================================== */}
-      {/* MAIN 3-COLUMN BODY (LEFT DOCK + CENTER WORKSPACE + RIGHT INSPECTOR) */}
+      {/* FULL-SCREEN ZERO-CLUTTER WORKSPACE + FLOATING DOCKS & DRAWERS        */}
       {/* ==================================================================== */}
       <div
         style={{
+          position: 'relative',
           flex: 1,
-          display: 'grid',
-          gridTemplateColumns: '300px minmax(0, 1fr) 340px',
+          width: '100%',
+          height: '100%',
           minHeight: 0,
           overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         {/* ================================================================== */}
-        {/* ZONA 2: LEFT DOCK (3 TAB: SLIDE, TAMBAH ELEMEN, LAYER & PEMULIHAN) */}
+        {/* FLOATING LEFT MINI-DOCK (CANVA-STYLE COMPACT ICON RAIL)            */}
+        {/* ================================================================== */}
+        <nav
+          aria-label="Floating Left Mini-Dock"
+          data-testid="studio-floating-mini-dock"
+          style={{
+            ...floatingGlassPanelStyle,
+            position: 'absolute',
+            left: '14px',
+            top: '56px',
+            zIndex: 145,
+            padding: '8px 6px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '6px',
+            width: '62px',
+          }}
+        >
+          {(
+            [
+              {
+                id: 'slides' as const,
+                icon: '❐',
+                label: 'Slide',
+                testId: 'tab-left-slides',
+                badge: content.slideOrder.length,
+              },
+              {
+                id: 'elements' as const,
+                icon: '＋',
+                label: 'Elemen',
+                testId: 'tab-left-elements',
+              },
+              {
+                id: 'layers' as const,
+                icon: '☰',
+                label: 'Layer',
+                testId: 'tab-left-layers',
+                badge: canvasElements.length + nativeElementsList.length,
+              },
+              {
+                id: 'magic-ai' as const,
+                icon: '✨',
+                label: 'Magic AI',
+                testId: 'tab-left-magic-ai',
+              },
+            ] as const
+          ).map((item) => {
+            const isActive = isLeftDrawerOpen && leftDockTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                data-testid={item.testId}
+                onClick={() => handleSelectDockTab(item.id)}
+                style={{
+                  width: '48px',
+                  padding: '7px 4px',
+                  borderRadius: '10px',
+                  border: isActive
+                    ? '1px solid #F59E0B'
+                    : '1px solid transparent',
+                  backgroundColor: isActive
+                    ? 'rgba(245, 158, 11, 0.18)'
+                    : 'transparent',
+                  color: isActive ? '#FBBF24' : '#CBD5E1',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '2px',
+                  cursor: 'pointer',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                }}
+              >
+                <span style={{ fontSize: '15px', lineHeight: 1 }}>
+                  {item.icon}
+                </span>
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+
+          <div
+            style={{
+              width: '36px',
+              height: '1px',
+              backgroundColor: 'rgba(148, 163, 184, 0.2)',
+              margin: '2px 0',
+            }}
+          />
+
+          <button
+            type="button"
+            data-testid="btn-toggle-right-inspector"
+            title="Buka/Tutup Property Inspector"
+            onClick={() => setIsRightInspectorOpen(!isRightInspectorOpen)}
+            style={{
+              width: '48px',
+              padding: '7px 4px',
+              borderRadius: '10px',
+              border: isRightInspectorOpen
+                ? '1px solid #38BDF8'
+                : '1px solid transparent',
+              backgroundColor: isRightInspectorOpen
+                ? 'rgba(56, 189, 248, 0.16)'
+                : 'transparent',
+              color: isRightInspectorOpen ? '#38BDF8' : '#94A3B8',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '2px',
+              cursor: 'pointer',
+              fontSize: '10px',
+              fontWeight: 700,
+            }}
+          >
+            <span style={{ fontSize: '14px', lineHeight: 1 }}>⚙</span>
+            <span>Properti</span>
+          </button>
+        </nav>
+
+        {/* ================================================================== */}
+        {/* FLOATING LEFT DRAWER (HANYA MUNCUL SAAT IKON MINI-DOCK DIKLIK)     */}
         {/* ================================================================== */}
         <aside
           aria-label="Left Studio Dock"
           data-testid="studio-left-dock"
           style={{
-            backgroundColor: '#0B1120',
-            borderRight: '1px solid #1E293B',
-            display: 'flex',
+            ...floatingGlassPanelStyle,
+            position: 'absolute',
+            left: '84px',
+            top: '56px',
+            width: '310px',
+            maxHeight: 'calc(100% - 125px)',
+            zIndex: 145,
+            display: isLeftDrawerOpen ? 'flex' : 'none',
             flexDirection: 'column',
-            minHeight: 0,
             overflow: 'hidden',
           }}
         >
-          {/* Navigasi 3 Tab Left Dock */}
           <div
-            role="tablist"
-            aria-label="Tab Left Dock"
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: '4px',
-              padding: '8px',
-              backgroundColor: '#090D16',
-              borderBottom: '1px solid #1E293B',
-              flexShrink: 0,
+              padding: '10px 12px',
+              borderBottom: '1px solid rgba(148, 163, 184, 0.16)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
             }}
           >
+            <span
+              style={{
+                fontSize: '12px',
+                fontWeight: 700,
+                color: '#FBBF24',
+              }}
+            >
+              {leftDockTab === 'slides' &&
+                `Daftar Slide (${content.slideOrder.length})`}
+              {leftDockTab === 'elements' && 'Tambah Elemen Kanvas'}
+              {leftDockTab === 'layers' &&
+                `Layer & Pemulihan (${canvasElements.length + nativeElementsList.length})`}
+              {leftDockTab === 'magic-ai' && '✨ Gemini Magic AI Studio'}
+            </span>
             <button
               type="button"
-              role="tab"
-              aria-selected={leftDockTab === 'slides'}
-              data-testid="tab-left-slides"
-              onClick={() => setLeftDockTab('slides')}
+              data-testid="btn-close-left-drawer"
+              onClick={() => setIsLeftDrawerOpen(false)}
               style={{
-                padding: '7px 6px',
+                padding: '2px 7px',
                 borderRadius: '6px',
-                border:
-                  leftDockTab === 'slides'
-                    ? '1px solid #F59E0B'
-                    : '1px solid transparent',
-                backgroundColor:
-                  leftDockTab === 'slides' ? '#1E293B' : 'transparent',
-                color: leftDockTab === 'slides' ? '#FBBF24' : '#94A3B8',
+                border: '1px solid #334155',
+                backgroundColor: '#1E293B',
+                color: '#CBD5E1',
                 fontSize: '11px',
-                fontWeight: 700,
                 cursor: 'pointer',
               }}
             >
-              Slide ({content.slideOrder.length})
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={leftDockTab === 'elements'}
-              data-testid="tab-left-elements"
-              onClick={() => setLeftDockTab('elements')}
-              style={{
-                padding: '7px 6px',
-                borderRadius: '6px',
-                border:
-                  leftDockTab === 'elements'
-                    ? '1px solid #F59E0B'
-                    : '1px solid transparent',
-                backgroundColor:
-                  leftDockTab === 'elements' ? '#1E293B' : 'transparent',
-                color: leftDockTab === 'elements' ? '#FBBF24' : '#94A3B8',
-                fontSize: '11px',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              + Elemen
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={leftDockTab === 'layers'}
-              data-testid="tab-left-layers"
-              onClick={() => setLeftDockTab('layers')}
-              style={{
-                padding: '7px 6px',
-                borderRadius: '6px',
-                border:
-                  leftDockTab === 'layers'
-                    ? '1px solid #F59E0B'
-                    : '1px solid transparent',
-                backgroundColor:
-                  leftDockTab === 'layers' ? '#1E293B' : 'transparent',
-                color: leftDockTab === 'layers' ? '#FBBF24' : '#94A3B8',
-                fontSize: '11px',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              Layer ({canvasElements.length + nativeElementsList.length})
+              ✕
             </button>
           </div>
 
-          {/* Isi Tab Left Dock */}
           <div
             style={{
               flex: 1,
@@ -1011,9 +1221,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
               gap: '12px',
             }}
           >
-            {/* -------------------------------------------------------------- */}
-            {/* TAB A: SLIDE (Daftar Visual, Tambah, Duplikat, Hapus Slide)    */}
-            {/* -------------------------------------------------------------- */}
+            {/* TAB A: SLIDE */}
             {leftDockTab === 'slides' && (
               <>
                 <div style={sectionCardStyle}>
@@ -1103,7 +1311,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                   />
                 </div>
 
-                {/* Daftar Visual Slide */}
                 <div
                   style={{
                     display: 'flex',
@@ -1156,8 +1363,8 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                       >
                         <div
                           style={{
-                            width: '64px',
-                            height: '36px',
+                            width: '60px',
+                            height: '34px',
                             borderRadius: '4px',
                             backgroundColor: '#090D16',
                             border: '1px solid #334155',
@@ -1217,7 +1424,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                           >
                             {id}
                             {customCount > 0 ? ` · ${customCount} elemen` : ''}
-                            {hidden ? ' · Disembunyikan' : ''}
                           </div>
                         </div>
                       </div>
@@ -1227,27 +1433,13 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
               </>
             )}
 
-            {/* -------------------------------------------------------------- */}
-            {/* TAB B: TAMBAH ELEMEN (Sekali Klik ke Kanvas)                   */}
-            {/* -------------------------------------------------------------- */}
+            {/* TAB B: TAMBAH ELEMEN */}
             {leftDockTab === 'elements' && (
               <>
                 <div style={sectionCardStyle}>
                   <span style={studioLabelStyle}>
-                    Tambah Elemen Interaktif ke Kanvas
+                    Tambah Elemen ke Kanvas Slide #{currentSlideOrderIndex + 1}
                   </span>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: '11px',
-                      color: '#94A3B8',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    Klik salah satu komponen di bawah untuk langsung
-                    menambahkannya ke kanvas Slide #{currentSlideOrderIndex + 1}
-                    .
-                  </p>
 
                   <div
                     style={{
@@ -1256,7 +1448,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                       gap: '8px',
                     }}
                   >
-                    {/* 1. Tombol dengan Gambar (Image Button) */}
                     <button
                       type="button"
                       data-testid="btn-add-canvas-image-button"
@@ -1285,14 +1476,12 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                             marginTop: '2px',
                           }}
                         >
-                          Tombol interaktif untuk pindah slide, pop-up, atau
-                          audio
+                          Pindah slide, pop-up materi, atau putar audio
                         </div>
                       </div>
                       <span style={{ fontSize: '16px' }}>▣</span>
                     </button>
 
-                    {/* 2. Teks / Judul */}
                     <button
                       type="button"
                       data-testid="btn-add-canvas-text"
@@ -1312,7 +1501,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                     >
                       <div>
                         <div style={{ fontSize: '12px', fontWeight: 700 }}>
-                          + Teks / Judul
+                          + Teks / Judul (Double-Click Edit)
                         </div>
                         <div
                           style={{
@@ -1321,7 +1510,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                             marginTop: '2px',
                           }}
                         >
-                          Blok teks bebas, judul materi, atau catatan budaya
+                          Klik 2x pada elemen di kanvas untuk edit teks instan
                         </div>
                       </div>
                       <span style={{ fontSize: '16px', fontWeight: 800 }}>
@@ -1329,7 +1518,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                       </span>
                     </button>
 
-                    {/* 3. Gambar / Stiker */}
                     <button
                       type="button"
                       data-testid="btn-add-canvas-image"
@@ -1349,7 +1537,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                     >
                       <div>
                         <div style={{ fontSize: '12px', fontWeight: 700 }}>
-                          + Gambar / Stiker
+                          + Gambar / Stiker Budaya
                         </div>
                         <div
                           style={{
@@ -1358,13 +1546,12 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                             marginTop: '2px',
                           }}
                         >
-                          Ilustrasi pakaian adat, rumah adat, atau stiker visual
+                          Ilustrasi pakaian adat, rumah adat, atau stiker
                         </div>
                       </div>
                       <span style={{ fontSize: '16px' }}>❖</span>
                     </button>
 
-                    {/* 4. Tombol Suara (Audio Trigger) */}
                     <button
                       type="button"
                       data-testid="btn-add-canvas-audio-hotspot"
@@ -1393,7 +1580,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                             marginTop: '2px',
                           }}
                         >
-                          Hotspot pemutar narasi MP3 atau efek suara interaktif
+                          Hotspot pemutar narasi MP3 atau efek suara
                         </div>
                       </div>
                       <span style={{ fontSize: '16px' }}>▶</span>
@@ -1401,7 +1588,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                   </div>
                 </div>
 
-                {/* Pustaka Cepat Stiker & Aset Budaya */}
                 <div style={sectionCardStyle}>
                   <span style={studioLabelStyle}>
                     Stiker & Aset Budaya Nusantara (Sekali Klik)
@@ -1444,7 +1630,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                           referrerPolicy="no-referrer"
                           style={{
                             width: '100%',
-                            height: '44px',
+                            height: '40px',
                             objectFit: 'contain',
                           }}
                         />
@@ -1456,12 +1642,9 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
               </>
             )}
 
-            {/* -------------------------------------------------------------- */}
-            {/* TAB C: LAYER & PEMULIHAN (Bring Forward/Backward, Lock, Restore) */}
-            {/* -------------------------------------------------------------- */}
+            {/* TAB C: LAYER & PEMULIHAN */}
             {leftDockTab === 'layers' && (
               <>
-                {/* Layer Elemen Kanvas Tambahan */}
                 <div style={sectionCardStyle}>
                   <span style={studioLabelStyle}>
                     Layer Elemen Kanvas ({canvasElements.length})
@@ -1471,7 +1654,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                       style={{
                         fontSize: '11px',
                         color: '#64748B',
-                        padding: '8px 0',
+                        padding: '6px 0',
                       }}
                     >
                       Belum ada elemen kanvas tambahan di slide ini.
@@ -1548,7 +1731,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                             >
                               <button
                                 type="button"
-                                title="Bring Forward (Naikkan Layer)"
                                 data-testid={`btn-layer-forward-${el.id}`}
                                 onClick={() =>
                                   reorderCanvasElementLayer(
@@ -1572,7 +1754,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                               </button>
                               <button
                                 type="button"
-                                title="Send Backward (Turunkan Layer)"
                                 data-testid={`btn-layer-backward-${el.id}`}
                                 onClick={() =>
                                   reorderCanvasElementLayer(
@@ -1596,11 +1777,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                               </button>
                               <button
                                 type="button"
-                                title={
-                                  el.locked
-                                    ? 'Buka Kunci Posisi'
-                                    : 'Lock Posisi'
-                                }
                                 data-testid={`btn-layer-lock-${el.id}`}
                                 onClick={() =>
                                   toggleCanvasElementLock(activeSlideId, el.id)
@@ -1694,181 +1870,205 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                     )}
                   </div>
 
-                  {nativeElementsList.length === 0 ? (
+                  {nativeElementsList.map((nat) => (
                     <div
+                      key={nat.id}
+                      onClick={() => setSelectedCanvasItemId(nat.id)}
                       style={{
-                        fontSize: '11px',
-                        color: '#64748B',
-                        padding: '6px 0',
-                      }}
-                    >
-                      Slide ini menggunakan komposisi latar penuh tanpa layer
-                      objek terpisah.
-                    </div>
-                  ) : (
-                    <div
-                      style={{
+                        padding: '8px',
+                        borderRadius: '6px',
+                        border:
+                          selectedCanvasItemId === nat.id
+                            ? '1px solid #F59E0B'
+                            : '1px solid #334155',
+                        backgroundColor: nat.hidden
+                          ? 'rgba(127, 29, 29, 0.15)'
+                          : '#0F172A',
+                        cursor: 'pointer',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '6px',
                       }}
                     >
-                      {nativeElementsList.map((nat) => (
-                        <div
-                          key={nat.id}
-                          onClick={() => setSelectedCanvasItemId(nat.id)}
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: nat.hidden ? '#94A3B8' : '#E2E8F0',
+                          textDecoration: nat.hidden ? 'line-through' : 'none',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        [{nat.kind}] {nat.label}
+                      </span>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          data-testid={`btn-layer-lock-${nat.id}`}
+                          onClick={() =>
+                            toggleCanvasElementLock(activeSlideId, nat.id)
+                          }
                           style={{
-                            padding: '8px',
-                            borderRadius: '6px',
-                            border:
-                              selectedCanvasItemId === nat.id
-                                ? '1px solid #F59E0B'
-                                : '1px solid #334155',
-                            backgroundColor: nat.hidden
-                              ? 'rgba(127, 29, 29, 0.15)'
-                              : '#0F172A',
+                            padding: '3px 6px',
+                            borderRadius: '4px',
+                            border: nat.locked
+                              ? '1px solid #38BDF8'
+                              : '1px solid #334155',
+                            backgroundColor: '#1E293B',
+                            color: nat.locked ? '#38BDF8' : '#CBD5E1',
+                            fontSize: '10px',
+                            fontWeight: 600,
                             cursor: 'pointer',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '6px',
                           }}
                         >
-                          <div
+                          {nat.locked ? 'Terkunci' : 'Lock'}
+                        </button>
+
+                        {nat.hidden ? (
+                          <button
+                            type="button"
+                            data-testid={`btn-restore-native-${nat.id}`}
+                            onClick={() =>
+                              restoreNativeElement(activeSlideId, nat.id)
+                            }
                             style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '6px',
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              border: '1px solid #10B981',
+                              backgroundColor: '#065F46',
+                              color: '#D1FAE5',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
                             }}
                           >
-                            <span
-                              style={{
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                color: nat.hidden ? '#94A3B8' : '#E2E8F0',
-                                textDecoration: nat.hidden
-                                  ? 'line-through'
-                                  : 'none',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              [{nat.kind}] {nat.label}
-                            </span>
-                          </div>
-
-                          <div
+                            Pulihkan (Restore)
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            data-testid={`btn-hide-native-${nat.id}`}
+                            onClick={() =>
+                              hideNativeElement(activeSlideId, nat.id)
+                            }
                             style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              border: '1px solid #475569',
+                              backgroundColor: '#1E293B',
+                              color: '#CBD5E1',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
                             }}
-                            onClick={(e) => e.stopPropagation()}
                           >
-                            <button
-                              type="button"
-                              data-testid={`btn-layer-lock-${nat.id}`}
-                              onClick={() =>
-                                toggleCanvasElementLock(activeSlideId, nat.id)
-                              }
-                              style={{
-                                padding: '3px 6px',
-                                borderRadius: '4px',
-                                border: nat.locked
-                                  ? '1px solid #38BDF8'
-                                  : '1px solid #334155',
-                                backgroundColor: '#1E293B',
-                                color: nat.locked ? '#38BDF8' : '#CBD5E1',
-                                fontSize: '10px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {nat.locked ? 'Terkunci' : 'Lock'}
-                            </button>
-
-                            {nat.hidden ? (
-                              <button
-                                type="button"
-                                data-testid={`btn-restore-native-${nat.id}`}
-                                onClick={() =>
-                                  restoreNativeElement(activeSlideId, nat.id)
-                                }
-                                style={{
-                                  padding: '3px 8px',
-                                  borderRadius: '4px',
-                                  border: '1px solid #10B981',
-                                  backgroundColor: '#065F46',
-                                  color: '#D1FAE5',
-                                  fontSize: '10px',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Pulihkan (Restore)
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                data-testid={`btn-hide-native-${nat.id}`}
-                                onClick={() =>
-                                  hideNativeElement(activeSlideId, nat.id)
-                                }
-                                style={{
-                                  padding: '3px 8px',
-                                  borderRadius: '4px',
-                                  border: '1px solid #475569',
-                                  backgroundColor: '#1E293B',
-                                  color: '#CBD5E1',
-                                  fontSize: '10px',
-                                  fontWeight: 600,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Sembunyikan
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                            Sembunyikan
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  ))}
                 </div>
               </>
+            )}
+
+            {/* TAB D: GEMINI MAGIC AI STUDIO */}
+            {leftDockTab === 'magic-ai' && (
+              <div style={sectionCardStyle}>
+                <span style={{ ...studioLabelStyle, color: '#FBBF24' }}>
+                  ✨ Gemini Magic AI Studio
+                </span>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: '11px',
+                    color: '#CBD5E1',
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Ketik perintah desain kanvas atau materi pop-up, lalu biarkan
+                  Gemini AI menyusun elemen secara otomatis ke slide aktif.
+                </p>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                  }}
+                >
+                  {MAGIC_AI_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => {
+                        setMagicPrompt(preset);
+                        void handleRunMagicAi(preset);
+                      }}
+                      style={{
+                        padding: '7px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(245, 158, 11, 0.35)',
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        color: '#F8FAFC',
+                        fontSize: '11px',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ✨ {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </aside>
 
         {/* ================================================================== */}
-        {/* ZONA 3: CENTER WORKSPACE (16:9 PROPORTIONAL STAGE + FLOATING BAR)  */}
+        {/* ZONA 3: 100% FULL PUBLIC VIEW CENTER CANVAS WORKSPACE              */}
         {/* ================================================================== */}
         <section
           aria-label="Center Canvas Workspace"
           data-testid="studio-center-workspace"
           style={{
-            backgroundColor: '#090D16',
+            flex: 1,
+            width: '100%',
+            height: '100%',
+            backgroundColor: '#060911',
             backgroundImage:
               'radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px)',
-            backgroundSize: '20px 20px',
+            backgroundSize: '22px 22px',
             display: 'flex',
             flexDirection: 'column',
             minHeight: 0,
             overflow: 'hidden',
           }}
         >
-          {/* Sub-bar Konteks Slide di Atas Kanvas */}
+          {/* Sub-bar Konteks Slide Minimalis */}
           <div
             style={{
-              padding: '8px 16px',
-              backgroundColor: 'rgba(15, 23, 42, 0.9)',
-              borderBottom: '1px solid #1E293B',
+              height: '40px',
+              padding: '0 16px',
+              backgroundColor: 'rgba(9, 13, 22, 0.72)',
+              backdropFilter: 'blur(10px)',
+              borderBottom: '1px solid rgba(148, 163, 184, 0.12)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: '12px',
-              flexWrap: 'wrap',
               flexShrink: 0,
+              zIndex: 120,
             }}
           >
             <div
@@ -1876,8 +2076,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '10px',
-                flex: 1,
-                minWidth: '240px',
+                minWidth: 0,
               }}
             >
               <span
@@ -1886,6 +2085,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                   fontFamily: 'monospace',
                   color: '#FBBF24',
                   fontWeight: 700,
+                  whiteSpace: 'nowrap',
                 }}
               >
                 SLIDE #{currentSlideOrderIndex + 1} ({activeSlideId})
@@ -1901,8 +2101,8 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                 placeholder="Judul slide..."
                 style={{
                   ...studioInputStyle,
-                  maxWidth: '240px',
-                  padding: '4px 8px',
+                  width: '210px',
+                  padding: '3px 8px',
                 }}
               />
               <input
@@ -1917,8 +2117,8 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                 placeholder="URL Latar (mobile/Slide...)"
                 style={{
                   ...studioInputStyle,
-                  maxWidth: '220px',
-                  padding: '4px 8px',
+                  width: '190px',
+                  padding: '3px 8px',
                   fontFamily: 'monospace',
                 }}
               />
@@ -1930,7 +2130,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                 alignItems: 'center',
                 gap: '6px',
                 fontSize: '11px',
-                color: '#94A3B8',
               }}
             >
               {onOpenClassicTab && (
@@ -1940,7 +2139,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                     data-testid="tab-quiz"
                     onClick={() => onOpenClassicTab('quiz')}
                     style={{
-                      padding: '4px 8px',
+                      padding: '3px 8px',
                       borderRadius: '5px',
                       border: '1px solid #334155',
                       backgroundColor: '#1E293B',
@@ -1957,7 +2156,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                     data-testid="tab-media"
                     onClick={() => onOpenClassicTab('media')}
                     style={{
-                      padding: '4px 8px',
+                      padding: '3px 8px',
                       borderRadius: '5px',
                       border: '1px solid #334155',
                       backgroundColor: '#1E293B',
@@ -1974,7 +2173,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                     data-testid="tab-backup"
                     onClick={() => onOpenClassicTab('backup')}
                     style={{
-                      padding: '4px 8px',
+                      padding: '3px 8px',
                       borderRadius: '5px',
                       border: '1px solid #334155',
                       backgroundColor: '#1E293B',
@@ -1999,7 +2198,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                   );
                 }}
                 style={{
-                  padding: '4px 8px',
+                  padding: '3px 8px',
                   borderRadius: '5px',
                   border: '1px solid #7F1D1D',
                   backgroundColor: 'rgba(127, 29, 29, 0.25)',
@@ -2014,14 +2213,14 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
             </div>
           </div>
 
-          {/* Area Panggung Kanvas 16:9 di Tengah Layar */}
+          {/* Full Public View 16:9 Stage (Zero-Clutter — Posisi 100% Sama dengan Pengguna) */}
           <div
             style={{
               flex: 1,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '24px',
+              padding: '16px 88px 66px 88px',
               overflow: 'auto',
               minHeight: 0,
             }}
@@ -2030,19 +2229,18 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
               data-testid="studio-stage-16-9"
               style={{
                 width: '100%',
-                maxWidth: '860px',
+                maxWidth: '1080px',
                 aspectRatio: '16 / 9',
                 position: 'relative',
-                borderRadius: '10px',
+                borderRadius: '12px',
                 overflow: 'hidden',
                 backgroundColor: '#060913',
                 border: isCanvasEditMode
-                  ? '2px solid #F59E0B'
-                  : '2px solid #10B981',
-                boxShadow: '0 24px 48px rgba(0, 0, 0, 0.65)',
+                  ? '2px solid rgba(245, 158, 11, 0.85)'
+                  : '2px solid rgba(16, 185, 129, 0.85)',
+                boxShadow: '0 28px 60px rgba(0, 0, 0, 0.75)',
               }}
             >
-              {/* Latar Slide */}
               {stageBackgroundUrl && (
                 <img
                   src={stageBackgroundUrl}
@@ -2054,13 +2252,12 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
-                    opacity: 0.72,
+                    opacity: 0.85,
                     pointerEvents: 'none',
                   }}
                 />
               )}
 
-              {/* Overlay Informasi Kontekstual Slide (Saat Mode Tes Interaktif / Tidak Mengganggu Kanvas) */}
               <div
                 style={{
                   position: 'absolute',
@@ -2068,19 +2265,20 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                   bottom: '10px',
                   zIndex: 15,
                   pointerEvents: 'none',
-                  backgroundColor: 'rgba(9, 13, 22, 0.78)',
+                  backgroundColor: 'rgba(9, 13, 22, 0.75)',
+                  backdropFilter: 'blur(8px)',
                   padding: '4px 10px',
-                  borderRadius: '6px',
+                  borderRadius: '999px',
                   border: '1px solid rgba(148, 163, 184, 0.25)',
                   fontSize: '11px',
                   color: '#CBD5E1',
                 }}
               >
                 {getSlideDisplayLabel(currentSlide, currentSlideOrderIndex)} ·{' '}
-                {canvasElements.length} Elemen Kustom
+                {canvasElements.length} Elemen Kanvas (Double-Click Teks untuk
+                Edit Instan)
               </div>
 
-              {/* CanvasStageOverlay: Merender Elemen Asli + CanvasElements + 8 Resize Handles + Floating Toolbar */}
               <CanvasStageOverlay
                 slideIdOverride={activeSlideId}
                 mode="embedded"
@@ -2094,51 +2292,123 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
             </div>
           </div>
 
-          {/* Footer Bar Petunjuk Shortcut Studio */}
+          {/* ================================================================ */}
+          {/* FLOATING BOTTOM GEMINI MAGIC AI BAR (GLASSMORPHISM PILL)         */}
+          {/* ================================================================ */}
           <div
+            data-testid="magic-ai-floating-bar"
             style={{
-              padding: '6px 16px',
-              backgroundColor: '#090D16',
-              borderTop: '1px solid #1E293B',
+              ...floatingGlassPanelStyle,
+              position: 'absolute',
+              bottom: '12px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 165,
+              width: 'min(720px, calc(100% - 220px))',
+              padding: '7px 12px',
+              borderRadius: '999px',
+              border: '1px solid rgba(245, 158, 11, 0.55)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: '11px',
-              color: '#94A3B8',
-              flexShrink: 0,
+              gap: '8px',
             }}
           >
-            <div>
-              {isCanvasEditMode
-                ? 'Mode Edit Kanvas Aktif: Klik & seret elemen untuk memindahkan (60fps), tarik 8 titik sudut/sisi untuk mengubah ukuran.'
-                : 'Mode Tes Interaktif Aktif: Klik tombol/hotspot di kanvas untuk menguji navigasi slide, audio, atau pop-up.'}
-            </div>
-            <div style={{ fontFamily: 'monospace', color: '#CBD5E1' }}>
-              Shortcut: Delete/Backspace (Hapus) · Ctrl+Z (Undo) · Ctrl+Y (Redo)
-            </div>
+            <span
+              style={{
+                fontSize: '12px',
+                fontWeight: 700,
+                color: '#FBBF24',
+                whiteSpace: 'nowrap',
+                paddingLeft: '4px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              <Sparkles size={14} />
+              <span>Magic AI:</span>
+            </span>
+            <input
+              type="text"
+              aria-label="Perintah Gemini Magic AI"
+              data-testid="input-magic-ai-prompt"
+              value={magicPrompt}
+              onChange={(e) => setMagicPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleRunMagicAi();
+                }
+              }}
+              placeholder='Ketik perintah AI (misal: "Buatkan 3 tombol bergambar menu materi di bagian bawah" atau "Buatkan isi materi pop-up untuk tombol ini")...'
+              style={{
+                flex: 1,
+                background: 'transparent',
+                border: 'none',
+                color: '#F8FAFC',
+                fontSize: '12px',
+                outline: 'none',
+              }}
+            />
+            <button
+              type="button"
+              data-testid="btn-magic-ai-submit"
+              disabled={isGeneratingMagicAi}
+              onClick={() => void handleRunMagicAi()}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '999px',
+                border: '1px solid #F59E0B',
+                backgroundColor: '#F59E0B',
+                color: '#090D16',
+                fontSize: '11px',
+                fontWeight: 700,
+                whiteSpace: 'nowrap',
+                cursor: isGeneratingMagicAi ? 'wait' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              {isGeneratingMagicAi ? (
+                <>
+                  <Loader2 size={13} />
+                  <span>Menyusun AI...</span>
+                </>
+              ) : (
+                <>
+                  <Wand2 size={13} />
+                  <span>✨ Buat Otomatis</span>
+                </>
+              )}
+            </button>
           </div>
         </section>
 
         {/* ================================================================== */}
-        {/* ZONA 4: RIGHT PROPERTY INSPECTOR (PANEL KANAN)                     */}
+        {/* ZONA 4: FLOATING RIGHT PROPERTY INSPECTOR (GLASSMORPHISM DRAWER)   */}
         {/* ================================================================== */}
         <aside
           aria-label="Right Property Inspector"
           data-testid="studio-right-inspector"
           style={{
-            backgroundColor: '#0B1120',
-            borderLeft: '1px solid #1E293B',
-            display: 'flex',
+            ...floatingGlassPanelStyle,
+            position: 'absolute',
+            right: '14px',
+            top: '56px',
+            width: '330px',
+            maxHeight: 'calc(100% - 132px)',
+            zIndex: 145,
+            display: isRightInspectorOpen ? 'flex' : 'none',
             flexDirection: 'column',
-            minHeight: 0,
             overflow: 'hidden',
           }}
         >
           <div
             style={{
               padding: '10px 14px',
-              backgroundColor: '#090D16',
-              borderBottom: '1px solid #1E293B',
+              backgroundColor: 'rgba(9, 13, 22, 0.85)',
+              borderBottom: '1px solid rgba(148, 163, 184, 0.16)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -2155,23 +2425,41 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
             >
               Property Inspector
             </span>
-            <span
-              style={{
-                fontSize: '11px',
-                fontFamily: 'monospace',
-                color: selectedCustomElement
-                  ? '#FBBF24'
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontFamily: 'monospace',
+                  color: selectedCustomElement
+                    ? '#FBBF24'
+                    : selectedNativeElement
+                      ? '#38BDF8'
+                      : '#64748B',
+                }}
+              >
+                {selectedCustomElement
+                  ? selectedCustomElement.type
                   : selectedNativeElement
-                    ? '#38BDF8'
-                    : '#64748B',
-              }}
-            >
-              {selectedCustomElement
-                ? selectedCustomElement.type
-                : selectedNativeElement
-                  ? 'Elemen Asli'
-                  : 'Belum Dipilih'}
-            </span>
+                    ? 'Elemen Asli'
+                    : 'Siap Edit'}
+              </span>
+              <button
+                type="button"
+                title="Sembunyikan Inspector"
+                onClick={() => setIsRightInspectorOpen(false)}
+                style={{
+                  padding: '2px 6px',
+                  borderRadius: '5px',
+                  border: '1px solid #334155',
+                  backgroundColor: '#1E293B',
+                  color: '#94A3B8',
+                  fontSize: '10px',
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           <div
@@ -2184,6 +2472,22 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
               gap: '12px',
             }}
           >
+            {lastMagicSummary && (
+              <div
+                data-testid="magic-ai-status-banner"
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                  fontSize: '11px',
+                  color: '#FDE68A',
+                }}
+              >
+                ✨ {lastMagicSummary}
+              </div>
+            )}
+
             {/* KONDISI 1: ELEMEN KANVAS KUSTOM SEDANG DIPILIH */}
             {selectedCustomElement ? (
               <>
@@ -2584,7 +2888,8 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                                 ...selectedCustomElement.style,
                                 objectFit: e.target.value as
                                   | 'contain'
-                                  | 'cover',
+                                  | 'cover'
+                                  | 'fill',
                               },
                             }
                           )
@@ -2593,6 +2898,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                       >
                         <option value="contain">Proporsional (contain)</option>
                         <option value="cover">Penuh Kotak (cover)</option>
+                        <option value="fill">Rentang Penuh (fill)</option>
                       </select>
                     </label>
                   </div>
@@ -2631,6 +2937,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                         <option value="sm">Tipis Halus (sm)</option>
                         <option value="md">Standar Sedang (md)</option>
                         <option value="lg">Tegas Dalam (lg)</option>
+                        <option value="xl">Ekstra Dalam (xl)</option>
                         <option value="glow">Pendar Emas (glow)</option>
                       </select>
                     </label>
@@ -2676,9 +2983,39 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
 
                 {/* C) PENGATURAN AKSI KLIK & AUDIO */}
                 <div style={sectionCardStyle}>
-                  <span style={{ ...studioLabelStyle, color: '#FBBF24' }}>
-                    c) Pengaturan Aksi Klik & Audio
-                  </span>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '6px',
+                    }}
+                  >
+                    <span style={{ ...studioLabelStyle, color: '#FBBF24' }}>
+                      c) Pengaturan Aksi Klik & Audio
+                    </span>
+                    <button
+                      type="button"
+                      data-testid="btn-magic-ai-popup-content"
+                      onClick={() =>
+                        void handleRunMagicAi(
+                          'Buatkan isi materi pop-up untuk tombol ini'
+                        )
+                      }
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '999px',
+                        border: '1px solid #F59E0B',
+                        backgroundColor: 'rgba(245, 158, 11, 0.16)',
+                        color: '#FBBF24',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ✨ Isi Pop-up AI
+                    </button>
+                  </div>
 
                   <label style={studioLabelStyle}>
                     Aksi Saat Elemen Diklik (`action.type`)
@@ -2716,7 +3053,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                     </select>
                   </label>
 
-                  {/* Target Slide jika goto-slide */}
                   {selectedCustomElement.action?.type === 'goto-slide' && (
                     <label style={studioLabelStyle}>
                       Pilih Slide Tujuan (`targetSlideId` / `targetSlideIndex`)
@@ -2763,7 +3099,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                     </label>
                   )}
 
-                  {/* External URL jika external-url */}
                   {selectedCustomElement.action?.type === 'external-url' && (
                     <label style={studioLabelStyle}>
                       URL Eksternal (`externalUrl`)
@@ -2907,7 +3242,6 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                     </select>
                   </div>
 
-                  {/* Pengaturan Modal Pop-up Materi jika open-popup */}
                   {selectedCustomElement.action?.type === 'open-popup' && (
                     <div
                       style={{
@@ -3084,8 +3418,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                   }}
                 >
                   Ubah pergeseran posisi persentase (`xDeltaPct`, `yDeltaPct`),
-                  teks kustom, atau sembunyikan secara non-destruktif tanpa
-                  merusak kode asli.
+                  teks kustom, atau sembunyikan secara non-destruktif.
                 </p>
 
                 <label style={studioLabelStyle}>
@@ -3199,10 +3532,10 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                 </div>
               </div>
             ) : (
-              /* KONDISI 3: BELUM ADA ELEMEN DIPILIH — PANDUAN CEPAT & PENGATURAN SLIDE */
+              /* KONDISI 3: BELUM ADA ELEMEN DIPILIH — PANDUAN CEPAT & MAGIC AI */
               <div style={sectionCardStyle}>
                 <span style={{ ...studioLabelStyle, color: '#FBBF24' }}>
-                  Pilih atau Tambahkan Elemen Kanvas
+                  Canva-Style Floating Studio + Magic AI
                 </span>
                 <p
                   style={{
@@ -3212,10 +3545,10 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                     lineHeight: 1.5,
                   }}
                 >
-                  Klik elemen apa pun di panggung tengah untuk membuka pengaturan
-                  lengkap (Gambar & Label, Gaya Visual, Aksi Klik & Audio, serta
-                  Koordinat Presisi), atau klik tombol di bawah untuk membuat
-                  elemen baru:
+                  Klik elemen di kanvas untuk memunculkan{' '}
+                  <strong>Floating Contextual Pill Toolbar</strong>, klik 2x
+                  untuk <strong>Inline Text Edit</strong>, atau gunakan tombol
+                  cepat di bawah:
                 </p>
 
                 <button
@@ -3223,7 +3556,7 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                   onClick={() => handleAddElement('image-button')}
                   style={{
                     padding: '9px 12px',
-                    borderRadius: '6px',
+                    borderRadius: '8px',
                     border: '1px solid #F59E0B',
                     backgroundColor: '#F59E0B',
                     color: '#090D16',
@@ -3233,6 +3566,28 @@ export const VisualStudioAdmin: React.FC<VisualStudioAdminProps> = ({
                   }}
                 >
                   + Buat Tombol Bergambar Sekarang
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="btn-quick-magic-3-buttons"
+                  onClick={() =>
+                    void handleRunMagicAi(
+                      'Buatkan 3 tombol bergambar menu materi di bagian bawah'
+                    )
+                  }
+                  style={{
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(245, 158, 11, 0.5)',
+                    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                    color: '#FBBF24',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  ✨ Magic AI: Buat 3 Tombol Menu di Bawah
                 </button>
               </div>
             )}

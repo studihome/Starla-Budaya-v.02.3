@@ -29,6 +29,10 @@ export interface CanvasStageOverlayProps {
    * Callback saat aksi `goto-slide` dipicu.
    */
   onNavigateSlide?: (targetSlideId: string) => void;
+  /**
+   * Callback opsional untuk membuka drawer inspector saat elemen dipilih.
+   */
+  onOpenInspector?: () => void;
 }
 
 function normalizeAssetUrl(rawUrl?: string): string {
@@ -245,14 +249,17 @@ export const CanvasStageOverlay: React.FC<CanvasStageOverlayProps> = ({
     setSelectedCanvasItemId,
     activeCanvasSlideId,
     setActiveCanvasSlideId,
+    updateElementOverride,
     updateElementOverrideTransient,
     hideNativeElement,
+    updateCanvasElement,
     updateElementTransient,
     commitToHistory,
     deleteCanvasElement,
     duplicateCanvasElement,
     reorderCanvasElementLayer,
     toggleCanvasElementLock,
+    uploadMediaToCloud,
   } = useContent();
 
   const isEditMode =
@@ -587,6 +594,11 @@ export const CanvasStageOverlay: React.FC<CanvasStageOverlayProps> = ({
               });
             }}
             onCommitHistory={commitToHistory}
+            onInlineTextChange={(id, newText) =>
+              updateElementOverride(resolvedSlideId, id, {
+                customText: newText,
+              })
+            }
             onLayerOrder={(id, dir) =>
               reorderCanvasElementLayer(resolvedSlideId, id, dir)
             }
@@ -639,6 +651,9 @@ export const CanvasStageOverlay: React.FC<CanvasStageOverlayProps> = ({
           locked={Boolean(item.locked)}
           enableSnap={isGridSnapEnabled}
           audioUrl={item.audioUrl}
+          backgroundColor={item.style?.backgroundColor}
+          fontSize={item.style?.fontSize}
+          actionType={item.action?.type || 'none'}
           isCanvasEditMode={isEditMode}
           isSelected={selectedCanvasItemId === item.id}
           isNativeElement={false}
@@ -653,6 +668,45 @@ export const CanvasStageOverlay: React.FC<CanvasStageOverlayProps> = ({
             });
           }}
           onCommitHistory={commitToHistory}
+          onInlineTextChange={(id, newLabel) =>
+            updateCanvasElement(resolvedSlideId, id, { label: newLabel })
+          }
+          onQuickStyleChange={(id, stylePatch) =>
+            updateCanvasElement(resolvedSlideId, id, {
+              style: {
+                ...item.style,
+                ...stylePatch,
+              },
+            })
+          }
+          onQuickActionChange={(id, nextActionType) =>
+            updateCanvasElement(resolvedSlideId, id, {
+              action: {
+                ...item.action,
+                type: nextActionType,
+              },
+            })
+          }
+          onQuickUploadImage={(id, file) => {
+            void uploadMediaToCloud(file, file.name).then((res) => {
+              if (res.url) {
+                updateCanvasElement(resolvedSlideId, id, { imageUrl: res.url });
+              }
+            });
+          }}
+          onQuickUploadAudio={(id, file) => {
+            void uploadMediaToCloud(file, file.name).then((res) => {
+              if (res.url) {
+                updateCanvasElement(resolvedSlideId, id, {
+                  audioUrl: res.url,
+                  action: {
+                    ...item.action,
+                    type: 'play-audio',
+                  },
+                });
+              }
+            });
+          }}
           onDuplicate={(id) => duplicateCanvasElement(resolvedSlideId, id)}
           onLayerOrder={(id, dir) =>
             reorderCanvasElementLayer(resolvedSlideId, id, dir)
