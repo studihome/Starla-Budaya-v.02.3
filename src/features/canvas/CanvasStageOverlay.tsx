@@ -1,443 +1,798 @@
-// src/features/canvas/CanvasStageOverlay.tsx
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useContent } from '../../context/ContentContext';
-import { CanvasElement, ResizeDirection } from '../../types/canvas';
-import { Copy, Trash2, Volume2, Lock, ArrowUp, ArrowDown, X } from 'lucide-react';
+import {
+  CanvasElementItem,
+  SlideContentItem,
+} from '../../data/defaultContent';
+import { resolveCanvasShadowCss } from '../../types/canvas';
+import { EditableWrapper } from './EditableWrapper';
+import { clampPct } from './canvasMath';
 
-const RESIZE_HANDLES: { dir: ResizeDirection; className: string }[] = [
-  { dir: 'nw', className: '-top-1.5 -left-1.5 cursor-nwse-resize' },
-  { dir: 'n', className: '-top-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize' },
-  { dir: 'ne', className: '-top-1.5 -right-1.5 cursor-nesw-resize' },
-  { dir: 'e', className: 'top-1/2 -translate-y-1/2 -right-1.5 cursor-ew-resize' },
-  { dir: 'se', className: '-bottom-1.5 -right-1.5 cursor-nwse-resize' },
-  { dir: 's', className: '-bottom-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize' },
-  { dir: 'sw', className: '-bottom-1.5 -left-1.5 cursor-nesw-resize' },
-  { dir: 'w', className: 'top-1/2 -translate-y-1/2 -left-1.5 cursor-ew-resize' },
-];
+export interface CanvasStageOverlayProps {
+  /**
+   * Jika diberikan, menggunakan slideId ini (mis. pada Split-Screen Live Preview / Visual Canvas Editor).
+   * Jika tidak diberikan, otomatis mendeteksi slide aktif dari player utama (`#slide-window`).
+   */
+  slideIdOverride?: string;
+  /**
+   * Mode pemasangan:
+   * - `'embedded'`: dirender langsung di dalam container parent berasio 16:9.
+   * - `'player-portal'`: dirender ke dalam `#slide-window` pada player utama menggunakan React Portal.
+   */
+  mode?: 'embedded' | 'player-portal';
+  /**
+   * Paksa status mode edit kanvas pada instance ini (opsional).
+   */
+  forceEditMode?: boolean;
+  /**
+   * Callback saat aksi `goto-slide` dipicu.
+   */
+  onNavigateSlide?: (targetSlideId: string) => void;
+}
 
-export const CanvasStageOverlay: React.FC = () => {
-  const {
-    activeSlide,
-    selectedElementId,
-    setSelectedElementId,
-    isEditMode,
-    snapEnabled,
-    updateElementTransient,
-    commitElementUpdate,
-    duplicateElement,
-    deleteElement,
-    setActiveSlideIndex,
-  } = useContent();
+function normalizeAssetUrl(rawUrl?: string): string {
+  if (!rawUrl) return '';
+  if (
+    rawUrl.startsWith('http') ||
+    rawUrl.startsWith('data:') ||
+    rawUrl.startsWith('blob:') ||
+    rawUrl.startsWith('/')
+  ) {
+    return rawUrl;
+  }
+  return `/${rawUrl}`;
+}
 
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const [snapLines, setSnapLines] = useState<{ vertical: boolean; horizontal: boolean }>({
-    vertical: false,
-    horizontal: false,
-  });
-  const [activePopup, setActivePopup] = useState<{ title: string; content: string } | null>(null);
+/**
+ * Merender visual internal dari satu `CanvasElementItem` sesuai tipenya
+ * (`'image-button' | 'text' | 'image' | 'audio-button' | 'audio-hotspot'`).
+ */
+const CanvasElementRenderer: React.FC<{
+  item: CanvasElementItem;
+  isPlayingAudio: boolean;
+}> = ({ item, isPlayingAudio }) => {
+  const [imgFailed, setImgFailed] = useState(false);
+  const bg = item.style?.backgroundColor ?? 'rgba(15, 23, 42, 0.85)';
+  const color = item.style?.textColor ?? '#FFFFFF';
+  const radius = item.style?.borderRadius ?? 8;
+  const borderWidth = item.style?.borderWidth ?? 0;
+  const borderColor = item.style?.borderColor ?? '#F59E0B';
+  const fontSize = item.style?.fontSize ?? 14;
+  const iconName = item.style?.iconName || '';
+  const objectFit = item.style?.objectFit ?? 'contain';
+  const shadow = resolveCanvasShadowCss(item.style?.shadow);
 
-  // Putar audio tanpa memotong audio lain
-  const playAudioUrl = (url?: string) => {
-    if (!url) return;
-    try {
-      const audio = new Audio(url);
-      audio.play().catch((err) => console.warn('Gagal memutar audio:', err));
-    } catch (e) {
-      console.warn('Error Audio API:', e);
-    }
-  };
+  const borderStyle =
+    borderWidth > 0 ? `${borderWidth}px solid ${borderColor}` : undefined;
 
-  // Aksi saat elemen diklik oleh pengguna (Bukan Mode Edit)
-  const handleUserClickElement = (el: CanvasElement) => {
-    if (isEditMode) return;
+  const imgSrc = normalizeAssetUrl(item.imageUrl);
 
-    // Jika elemen punya audio langsung, putar suaranya
-    if (el.audioUrl) {
-      playAudioUrl(el.audioUrl);
-    }
+  if (item.type === 'image') {
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          borderRadius: `${radius}px`,
+          border: borderStyle,
+          overflow: 'hidden',
+          backgroundColor: bg,
+          boxShadow: shadow,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {imgSrc && !imgFailed ? (
+          <img
+            src={imgSrc}
+            alt={item.label || 'Elemen Gambar Kanvas'}
+            referrerPolicy="no-referrer"
+            onError={() => setImgFailed(true)}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit,
+              display: 'block',
+            }}
+          />
+        ) : (
+          <span
+            style={{
+              fontSize: `${fontSize}px`,
+              color,
+              fontWeight: 600,
+              padding: '6px',
+              textAlign: 'center',
+            }}
+          >
+            {iconName ? `${iconName} ` : ''}
+            {item.label || 'Gambar'}
+          </span>
+        )}
+      </div>
+    );
+  }
 
-    switch (el.action.type) {
-      case 'play-audio':
-        playAudioUrl(el.action.audioUrl || el.audioUrl);
-        break;
-      case 'goto-slide':
-        if (typeof el.action.targetSlideIndex === 'number') {
-          setActiveSlideIndex(el.action.targetSlideIndex);
-        }
-        break;
-      case 'open-popup':
-        setActivePopup({
-          title: el.action.popupTitle || el.label || 'Informasi',
-          content: el.action.popupContent || '',
-        });
-        break;
-      case 'external-url':
-        if (el.action.externalUrl) {
-          window.open(el.action.externalUrl, '_blank', 'noopener,noreferrer');
-        }
-        break;
-      default:
-        break;
-    }
-  };
+  if (item.type === 'text') {
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          borderRadius: `${radius}px`,
+          border: borderStyle,
+          backgroundColor: bg,
+          color,
+          fontSize: `${fontSize}px`,
+          fontWeight: 600,
+          boxShadow: shadow,
+          padding: '8px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          overflow: 'hidden',
+          lineHeight: 1.35,
+          gap: '6px',
+        }}
+      >
+        {iconName && <span aria-hidden="true">{iconName}</span>}
+        <span>{item.label || 'Teks Kanvas'}</span>
+      </div>
+    );
+  }
 
-  // Pointer Handler 60 FPS untuk Geser Posisi (Move) & 8 Titik Resize dalam Persentase
-  const startPointerInteraction = (
-    e: React.PointerEvent,
-    el: CanvasElement,
-    mode: 'move' | ResizeDirection
-  ) => {
-    if (!isEditMode) return;
-    e.stopPropagation();
-    setSelectedElementId(el.id);
+  if (item.type === 'audio-hotspot' || item.type === 'audio-button') {
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          borderRadius: `${radius}px`,
+          backgroundColor: bg,
+          color,
+          fontSize: `${fontSize}px`,
+          fontWeight: 700,
+          boxShadow: shadow,
+          border: borderStyle || '1.5px solid #F59E0B',
+          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          overflow: 'hidden',
+        }}
+      >
+        <span aria-hidden="true">
+          {isPlayingAudio ? '◼' : iconName || '▶'}
+        </span>
+        <span
+          style={{
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {item.label || 'Putar Audio'}
+        </span>
+      </div>
+    );
+  }
 
-    if (el.locked || !overlayRef.current) return;
-
-    const targetDom = e.currentTarget as HTMLElement;
-    targetDom.setPointerCapture(e.pointerId);
-
-    const rect = overlayRef.current.getBoundingClientRect();
-    const startClientX = e.clientX;
-    const startClientY = e.clientY;
-    const initial = { x: el.x, y: el.y, width: el.width, height: el.height };
-
-    let latestState = { ...initial };
-
-    const handlePointerMove = (moveEvt: PointerEvent) => {
-      const deltaXPct = ((moveEvt.clientX - startClientX) / rect.width) * 100;
-      const deltaYPct = ((moveEvt.clientY - startClientY) / rect.height) * 100;
-
-      let nextX = initial.x;
-      let nextY = initial.y;
-      let nextW = initial.width;
-      let nextH = initial.height;
-
-      if (mode === 'move') {
-        nextX = Math.max(0, Math.min(100 - initial.width, initial.x + deltaXPct));
-        nextY = Math.max(0, Math.min(100 - initial.height, initial.y + deltaYPct));
-
-        // Magnetic Center Snapping (toleransi 1.2%)
-        let vSnap = false;
-        let hSnap = false;
-        if (snapEnabled) {
-          const centerX = nextX + nextW / 2;
-          const centerY = nextY + nextH / 2;
-          if (Math.abs(centerX - 50) < 1.2) {
-            nextX = 50 - nextW / 2;
-            vSnap = true;
-          }
-          if (Math.abs(centerY - 50) < 1.2) {
-            nextY = 50 - nextH / 2;
-            hSnap = true;
-          }
-        }
-        setSnapLines({ vertical: vSnap, horizontal: hSnap });
-      } else {
-        // Logika 8 Titik Resize dengan pengaman ukuran minimum 4%
-        const minSize = 4;
-        if (mode.includes('e')) {
-          nextW = Math.max(minSize, Math.min(100 - initial.x, initial.width + deltaXPct));
-        }
-        if (mode.includes('s')) {
-          nextH = Math.max(minSize, Math.min(100 - initial.y, initial.height + deltaYPct));
-        }
-        if (mode.includes('w')) {
-          const maxDeltaX = initial.width - minSize;
-          const clampedDX = Math.max(-initial.x, Math.min(maxDeltaX, deltaXPct));
-          nextX = initial.x + clampedDX;
-          nextW = initial.width - clampedDX;
-        }
-        if (mode.includes('n')) {
-          const maxDeltaY = initial.height - minSize;
-          const clampedDY = Math.max(-initial.y, Math.min(maxDeltaY, deltaYPct));
-          nextY = initial.y + clampedDY;
-          nextH = initial.height - clampedDY;
-        }
-      }
-
-      latestState = {
-        x: Number(nextX.toFixed(2)),
-        y: Number(nextY.toFixed(2)),
-        width: Number(nextW.toFixed(2)),
-        height: Number(nextH.toFixed(2)),
-      };
-
-      updateElementTransient(el.id, latestState);
-    };
-
-    const handlePointerUp = (upEvt: PointerEvent) => {
-      try {
-        targetDom.releasePointerCapture(upEvt.pointerId);
-      } catch {
-        // Abaikan jika pointer sudah dilepas
-      }
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-      setSnapLines({ vertical: false, horizontal: false });
-      commitElementUpdate(el.id, latestState);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-  };
-
-  const getShadowClass = (shadow: CanvasElement['style']['shadow']) => {
-    switch (shadow) {
-      case 'sm':
-        return 'shadow-sm';
-      case 'md':
-        return 'shadow-md';
-      case 'lg':
-        return 'shadow-lg shadow-black/40';
-      case 'xl':
-        return 'shadow-2xl shadow-black/60';
-      case 'glow':
-        return 'shadow-[0_0_25px_rgba(250,204,21,0.65)]';
-      default:
-        return '';
-    }
-  };
-
-  const getHoverClass = (hover: CanvasElement['style']['hoverEffect']) => {
-    if (isEditMode) return '';
-    switch (hover) {
-      case 'scale':
-        return 'transition-transform duration-200 hover:scale-105 active:scale-95';
-      case 'lift':
-        return 'transition-all duration-200 hover:-translate-y-1.5 hover:shadow-xl';
-      case 'pulse':
-        return 'hover:animate-pulse';
-      case 'glow':
-        return 'transition-shadow duration-200 hover:shadow-[0_0_30px_rgba(250,204,21,0.85)]';
-      default:
-        return '';
-    }
-  };
-
+  // Default: 'image-button'
   return (
     <div
-      ref={overlayRef}
-      onClick={() => isEditMode && setSelectedElementId(null)}
-      className={`absolute inset-0 w-full h-full select-none overflow-hidden ${
-        isEditMode ? 'pointer-events-auto' : 'pointer-events-none'
-      }`}
+      style={{
+        width: '100%',
+        height: '100%',
+        borderRadius: `${radius}px`,
+        border: borderStyle,
+        backgroundColor: bg,
+        color,
+        fontSize: `${fontSize}px`,
+        fontWeight: 700,
+        boxShadow: shadow,
+        padding: '6px 12px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px',
+        overflow: 'hidden',
+      }}
     >
-      {/* Garis Bantu Grid & Snap Magnetik saat Mode Edit */}
-      {isEditMode && snapEnabled && (
-        <div className="absolute inset-0 pointer-events-none z-40">
-          {snapLines.vertical && (
-            <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-0.5 bg-yellow-400 shadow-[0_0_8px_#FACC15]" />
-          )}
-          {snapLines.horizontal && (
-            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 bg-yellow-400 shadow-[0_0_8px_#FACC15]" />
-          )}
-        </div>
+      {imgSrc && !imgFailed ? (
+        <img
+          src={imgSrc}
+          alt={item.label || 'Ikon Tombol'}
+          referrerPolicy="no-referrer"
+          onError={() => setImgFailed(true)}
+          style={{
+            height: '75%',
+            maxWidth: '38%',
+            objectFit,
+            flexShrink: 0,
+          }}
+        />
+      ) : (
+        iconName && <span aria-hidden="true">{iconName}</span>
+      )}
+      <span
+        style={{
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {item.label || 'Tombol Interaktif'}
+      </span>
+    </div>
+  );
+};
+
+export const CanvasStageOverlay: React.FC<CanvasStageOverlayProps> = ({
+  slideIdOverride,
+  mode = 'embedded',
+  forceEditMode,
+  onNavigateSlide,
+}) => {
+  const {
+    content,
+    isCanvasEditMode: contextEditMode,
+    isGridSnapEnabled,
+    selectedCanvasItemId,
+    setSelectedCanvasItemId,
+    activeCanvasSlideId,
+    setActiveCanvasSlideId,
+    updateElementOverrideTransient,
+    hideNativeElement,
+    updateElementTransient,
+    commitToHistory,
+    deleteCanvasElement,
+    duplicateCanvasElement,
+    reorderCanvasElementLayer,
+    toggleCanvasElementLock,
+  } = useContent();
+
+  const isEditMode =
+    forceEditMode !== undefined ? forceEditMode : contextEditMode;
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingAudioItemId, setPlayingAudioItemId] = useState<string | null>(
+    null
+  );
+  const [activePopup, setActivePopup] = useState<{
+    title: string;
+    content: string;
+    externalUrl?: string;
+  } | null>(null);
+  const [snapGuides, setSnapGuides] = useState<{
+    snapX: number | null;
+    snapY: number | null;
+  }>({ snapX: null, snapY: null });
+
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  const [detectedPlayerSlideId, setDetectedPlayerSlideId] =
+    useState<string>('');
+
+  // Deteksi `#slide-window` dan slide aktif pada player Storyline jika dalam mode `'player-portal'`
+  useEffect(() => {
+    if (mode !== 'player-portal' || typeof document === 'undefined') return;
+
+    const syncPortalAndSlide = () => {
+      const sw = document.getElementById('slide-window');
+      if (sw && sw !== portalTarget) {
+        setPortalTarget(sw);
+      }
+      const win = window as unknown as {
+        StarlaCoreEngine?: { getCurrentSlideId?: () => string };
+      };
+      const currentId = win.StarlaCoreEngine?.getCurrentSlideId?.() || '';
+      if (currentId && content.slides[currentId]) {
+        setDetectedPlayerSlideId(currentId);
+      }
+    };
+
+    syncPortalAndSlide();
+    const timer = window.setInterval(syncPortalAndSlide, 450);
+    return () => window.clearInterval(timer);
+  }, [mode, portalTarget, content.slides]);
+
+  const resolvedSlideId =
+    slideIdOverride ||
+    detectedPlayerSlideId ||
+    activeCanvasSlideId ||
+    content.slideOrder[0];
+
+  const currentSlide: SlideContentItem | undefined =
+    content.slides[resolvedSlideId];
+
+  const canvasElements = currentSlide?.canvasElements || [];
+  const elementOverrides = currentSlide?.elementOverrides || {};
+  const hiddenElementIds = currentSlide?.hiddenElementIds || [];
+
+  // Keyboard Delete / Backspace di Mode Edit Kanvas
+  useEffect(() => {
+    if (!isEditMode || !selectedCanvasItemId || typeof window === 'undefined') {
+      return;
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+
+      const customTarget = canvasElements.find(
+        (item) => item.id === selectedCanvasItemId
+      );
+      if (customTarget) {
+        if (customTarget.locked) return;
+        e.preventDefault();
+        deleteCanvasElement(resolvedSlideId, selectedCanvasItemId);
+        return;
+      }
+
+      const natOv = elementOverrides[selectedCanvasItemId];
+      if (natOv?.locked) return;
+      e.preventDefault();
+      hideNativeElement(resolvedSlideId, selectedCanvasItemId);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    isEditMode,
+    selectedCanvasItemId,
+    canvasElements,
+    elementOverrides,
+    resolvedSlideId,
+    deleteCanvasElement,
+    hideNativeElement,
+  ]);
+
+  // Zero-Overhead Guardrail:
+  // Di mode player-portal pengguna biasa (`!isEditMode`), jika tidak ada `canvasElements` dan tidak ada popup aktif,
+  // jangan merender elemen DOM apa pun agar tampilan 100% identik dengan aplikasi asli.
+  if (
+    mode === 'player-portal' &&
+    !isEditMode &&
+    canvasElements.length === 0 &&
+    !activePopup
+  ) {
+    return null;
+  }
+
+  const handlePlayAudioForItem = (itemId: string, rawAudioUrl?: string) => {
+    const fallbackUrl =
+      rawAudioUrl ||
+      currentSlide?.audios?.[0]?.url ||
+      'story_content/6DeuLJzk41Q_44100_56_0.mp3';
+    const audioSrc = normalizeAssetUrl(fallbackUrl);
+    if (!audioSrc || !audioRef.current) return;
+
+    if (playingAudioItemId === itemId) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setPlayingAudioItemId(null);
+      return;
+    }
+
+    setPlayingAudioItemId(itemId);
+    audioRef.current.src = audioSrc;
+    audioRef.current.load();
+    audioRef.current.play().catch(() => {});
+  };
+
+  // Eksekusi aksi saat elemen diklik di Mode Pengguna (`!isEditMode`)
+  const handleTriggerElementAction = (item: CanvasElementItem) => {
+    const act = item.action;
+    const isAudioType =
+      item.type === 'audio-hotspot' || item.type === 'audio-button';
+    const effectiveActionType =
+      act?.type && act.type !== 'none'
+        ? act.type
+        : isAudioType && item.audioUrl
+          ? 'play-audio'
+          : 'none';
+
+    if (effectiveActionType === 'goto-slide') {
+      const targetIdFromIndex =
+        typeof act.targetSlideIndex === 'number' &&
+        act.targetSlideIndex >= 0 &&
+        act.targetSlideIndex < content.slideOrder.length
+          ? content.slideOrder[act.targetSlideIndex]
+          : undefined;
+      const targetSlideId = act.targetSlideId || targetIdFromIndex;
+      if (targetSlideId) {
+        if (onNavigateSlide) {
+          onNavigateSlide(targetSlideId);
+        } else {
+          setActiveCanvasSlideId(targetSlideId);
+          if (typeof document !== 'undefined') {
+            const targetEl = document.querySelector<HTMLElement>(
+              `[data-slide-id="${targetSlideId}"]`
+            );
+            targetEl?.click();
+          }
+        }
+      }
+    } else if (effectiveActionType === 'play-audio') {
+      handlePlayAudioForItem(item.id, item.audioUrl);
+    } else if (effectiveActionType === 'open-popup') {
+      setActivePopup({
+        title: act.popupTitle || item.label || 'Informasi Budaya',
+        content:
+          act.popupBody ||
+          act.popupContent ||
+          'Informasi interaktif STARLA BUDAYA.',
+      });
+    } else if (effectiveActionType === 'external-url' && act.externalUrl) {
+      setActivePopup({
+        title: act.popupTitle || item.label || 'Tautan Eksternal',
+        content:
+          act.popupBody ||
+          act.popupContent ||
+          `Buka tautan referensi budaya: ${act.externalUrl}`,
+        externalUrl: act.externalUrl,
+      });
+    }
+  };
+
+  // Daftar elemen bawaan slide (teks/gambar) untuk diedit posisinya secara non-destruktif saat `isEditMode === true`
+  const nativeInteractiveItems = isEditMode
+    ? [
+        ...(currentSlide?.texts || []).slice(0, 6).map((tb, idx) => {
+          const ov = elementOverrides[tb.objectId];
+          const isHidden = Boolean(
+            ov?.hidden || hiddenElementIds.includes(tb.objectId)
+          );
+          const baseX = clampPct(12 + (idx % 2) * 38, 0, 80);
+          const baseY = clampPct(16 + Math.floor(idx / 2) * 20, 0, 80);
+          return {
+            objectId: tb.objectId,
+            kind: 'native-text' as const,
+            label:
+              ov?.customText ??
+              (tb.lines.join(' ').trim() || tb.altText || tb.objectId),
+            x: clampPct(baseX + (ov?.xDeltaPct || 0), 0, 92),
+            y: clampPct(baseY + (ov?.yDeltaPct || 0), 0, 92),
+            baseX,
+            baseY,
+            width: ov?.widthPct ?? 34,
+            height: ov?.heightPct ?? 12,
+            zIndex: ov?.zIndex ?? 35,
+            locked: Boolean(ov?.locked),
+            audioUrl: ov?.customAudio || currentSlide?.audios?.[0]?.url || '',
+            isHidden,
+          };
+        }),
+      ].filter((item) => !item.isHidden)
+    : [];
+
+  const overlayContent = (
+    <div
+      ref={containerRef}
+      data-testid="canvas-stage-overlay"
+      data-slide-id={resolvedSlideId}
+      data-edit-mode={String(isEditMode)}
+      data-grid-snap={String(isGridSnapEnabled)}
+      onPointerDown={() => {
+        if (isEditMode) {
+          setSelectedCanvasItemId(null);
+        }
+      }}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        zIndex: isEditMode ? 90 : 38,
+        pointerEvents: isEditMode ? 'auto' : 'none',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Audio Player Internal untuk Aksi `play-audio` & Tes Audio */}
+      <audio
+        ref={audioRef}
+        onEnded={() => setPlayingAudioItemId(null)}
+        style={{ display: 'none' }}
+      />
+
+      {/* Grid Overlay Proporsional — HANYA dirender saat `isEditMode === true` dan `isGridSnapEnabled === true` */}
+      {isEditMode && isGridSnapEnabled && (
+        <div
+          data-testid="canvas-grid-overlay"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 10,
+            backgroundImage:
+              'linear-gradient(to right, rgba(148, 163, 184, 0.14) 1px, transparent 1px), linear-gradient(to bottom, rgba(148, 163, 184, 0.14) 1px, transparent 1px)',
+            backgroundSize: '10% 10%',
+          }}
+        />
       )}
 
-      {/* Render Seluruh Elemen Kanvas */}
-      {activeSlide.elements
-        .filter((el) => !el.hidden)
-        .map((el) => {
-          const isSelected = isEditMode && selectedElementId === el.id;
+      {/* Garis Bantu Tengah (Center Snap Guides) — HANYA dirender saat `isEditMode === true` dan snap aktif */}
+      {isEditMode && isGridSnapEnabled && snapGuides.snapX !== null && (
+        <div
+          data-testid="canvas-snap-guide-x"
+          style={{
+            position: 'absolute',
+            left: `${snapGuides.snapX}%`,
+            top: 0,
+            bottom: 0,
+            width: '1px',
+            backgroundColor: '#38BDF8',
+            boxShadow: '0 0 6px rgba(56, 189, 248, 0.9)',
+            zIndex: 130,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+      {isEditMode && isGridSnapEnabled && snapGuides.snapY !== null && (
+        <div
+          data-testid="canvas-snap-guide-y"
+          style={{
+            position: 'absolute',
+            top: `${snapGuides.snapY}%`,
+            left: 0,
+            right: 0,
+            height: '1px',
+            backgroundColor: '#38BDF8',
+            boxShadow: '0 0 6px rgba(56, 189, 248, 0.9)',
+            zIndex: 130,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
 
-          return (
+      {/* 1. Render Elemen Asli Slide (Native Elements) saat Mode Edit Kanvas Aktif */}
+      {isEditMode &&
+        nativeInteractiveItems.map((nat) => (
+          <EditableWrapper
+            key={`native_${nat.objectId}`}
+            id={nat.objectId}
+            label={`Asli: ${nat.label}`}
+            x={nat.x}
+            y={nat.y}
+            width={nat.width}
+            height={nat.height}
+            zIndex={nat.zIndex}
+            locked={nat.locked}
+            enableSnap={isGridSnapEnabled}
+            audioUrl={nat.audioUrl}
+            isCanvasEditMode={true}
+            isSelected={selectedCanvasItemId === nat.objectId}
+            isNativeElement={true}
+            containerRef={containerRef}
+            onSelect={(id) => setSelectedCanvasItemId(id)}
+            onChangeBounds={(id, bounds) => {
+              updateElementOverrideTransient(resolvedSlideId, id, {
+                xDeltaPct: bounds.x - nat.baseX,
+                yDeltaPct: bounds.y - nat.baseY,
+                widthPct: bounds.width,
+                heightPct: bounds.height,
+              });
+            }}
+            onCommitHistory={commitToHistory}
+            onLayerOrder={(id, dir) =>
+              reorderCanvasElementLayer(resolvedSlideId, id, dir)
+            }
+            onToggleLock={(id) => toggleCanvasElementLock(resolvedSlideId, id)}
+            onTestAudio={(id, url) => handlePlayAudioForItem(id, url)}
+            onDelete={(id) => hideNativeElement(resolvedSlideId, id)}
+            onSnapChange={setSnapGuides}
+          >
             <div
-              key={el.id}
               style={{
-                left: `${el.x}%`,
-                top: `${el.y}%`,
-                width: `${el.width}%`,
-                height: `${el.height}%`,
-                zIndex: el.zIndex,
-                opacity: (el.style.opacity ?? 100) / 100,
+                width: '100%',
+                height: '100%',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(15, 23, 42, 0.72)',
+                border: '1px solid rgba(148, 163, 184, 0.45)',
+                color: '#E2E8F0',
+                fontSize: '11px',
+                padding: '4px 8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '6px',
+                overflow: 'hidden',
               }}
-              onPointerDown={(e) => startPointerInteraction(e, el, 'move')}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isEditMode) {
-                  setSelectedElementId(el.id);
-                } else {
-                  handleUserClickElement(el);
-                }
-              }}
-              className={`absolute group pointer-events-auto ${
-                isEditMode
-                  ? el.locked
-                    ? 'cursor-not-allowed'
-                    : 'cursor-move'
-                  : 'cursor-pointer'
-              } ${getHoverClass(el.style.hoverEffect)}`}
             >
-              {/* Floating Quick-Action Toolbar di Atas Elemen yang Dipilih */}
-              {isSelected && (
-                <div
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className="absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-slate-900/95 border border-yellow-400/50 text-white px-2.5 py-1 rounded-lg shadow-xl z-50 whitespace-nowrap"
-                >
-                  <span className="text-[11px] font-semibold text-yellow-400 mr-1.5">
-                    {el.name}
-                  </span>
-                  <button
-                    type="button"
-                    title="Naikkan Layer"
-                    onClick={() => commitElementUpdate(el.id, { zIndex: el.zIndex + 1 })}
-                    className="p-1 hover:bg-slate-700 rounded"
-                  >
-                    <ArrowUp className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    title="Turunkan Layer"
-                    onClick={() =>
-                      commitElementUpdate(el.id, { zIndex: Math.max(1, el.zIndex - 1) })
-                    }
-                    className="p-1 hover:bg-slate-700 rounded"
-                  >
-                    <ArrowDown className="w-3.5 h-3.5" />
-                  </button>
-                  {(el.audioUrl || el.action.audioUrl) && (
-                    <button
-                      type="button"
-                      title="Tes Putar Suara"
-                      onClick={() => playAudioUrl(el.audioUrl || el.action.audioUrl)}
-                      className="p-1 text-emerald-400 hover:bg-slate-700 rounded"
-                    >
-                      <Volume2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    title="Duplikat Elemen"
-                    onClick={() => duplicateElement(el.id)}
-                    className="p-1 hover:bg-slate-700 rounded"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    title="Hapus Elemen"
-                    onClick={() => deleteElement(el.id)}
-                    className="p-1 text-rose-400 hover:bg-rose-950/60 rounded"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {/* Kontainer Visual Utama Elemen */}
-              <div
+              <span
                 style={{
-                  backgroundColor: el.style.backgroundColor,
-                  color: el.style.textColor,
-                  borderRadius: `${el.style.borderRadius}px`,
-                  borderWidth: `${el.style.borderWidth}px`,
-                  borderColor: el.style.borderColor,
-                  borderStyle: el.style.borderWidth > 0 ? 'solid' : 'none',
-                  fontSize: `${el.style.fontSize}px`,
-                  fontWeight: el.style.fontWeight,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                 }}
-                className={`w-full h-full flex flex-col items-center justify-center overflow-hidden relative transition-colors ${getShadowClass(
-                  el.style.shadow
-                )} ${
-                  isSelected
-                    ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-slate-950'
-                    : isEditMode
-                    ? 'hover:ring-1 hover:ring-sky-400/70'
-                    : ''
-                }`}
               >
-                {/* Tampilan Gambar untuk Image Button atau Image */}
-                {(el.type === 'image-button' || el.type === 'image') && el.imageUrl && (
-                  <img
-                    src={el.imageUrl}
-                    alt={el.label || el.name}
-                    draggable={false}
-                    style={{ objectFit: el.style.objectFit }}
-                    className={`w-full ${
-                      el.style.textPosition === 'bottom' || el.style.textPosition === 'top'
-                        ? 'h-3/4'
-                        : 'h-full'
-                    } pointer-events-none select-none`}
-                  />
-                )}
-
-                {/* Ikon Audio jika tipe Audio Button */}
-                {el.type === 'audio-button' && (
-                  <Volume2 className="w-7 h-7 mb-1 text-yellow-400 animate-pulse" />
-                )}
-
-                {/* Label Teks Tombol / Elemen */}
-                {el.style.textPosition !== 'hidden' && el.label && (
-                  <div
-                    className={`px-3 py-1.5 text-center leading-tight break-words w-full flex items-center justify-center ${
-                      el.style.textPosition === 'overlay'
-                        ? 'absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]'
-                        : 'h-auto'
-                    }`}
-                  >
-                    <span>{el.label}</span>
-                  </div>
-                )}
-
-                {/* Indikator Kunci Posisi di Mode Edit */}
-                {isEditMode && el.locked && (
-                  <div className="absolute top-1.5 right-1.5 bg-slate-900/80 p-1 rounded text-amber-400">
-                    <Lock className="w-3.5 h-3.5" />
-                  </div>
-                )}
-              </div>
-
-              {/* 8 Titik Handle Resize (Hanya Tampil Saat Dipilih & Tidak Dikunci) */}
-              {isSelected && !el.locked && (
-                <>
-                  {RESIZE_HANDLES.map((h) => (
-                    <div
-                      key={h.dir}
-                      onPointerDown={(e) => startPointerInteraction(e, el, h.dir)}
-                      className={`absolute w-3.5 h-3.5 bg-yellow-400 border-2 border-slate-950 rounded-full shadow-md z-50 hover:scale-125 transition-transform ${h.className}`}
-                    />
-                  ))}
-                </>
-              )}
+                [Elemen Asli] {nat.label}
+              </span>
             </div>
-          );
-        })}
+          </EditableWrapper>
+        ))}
 
-      {/* Modal Pop-up Interaktif Saat Tombol Diklik Pengguna */}
+      {/* 2. Render Seluruh `canvasElements` di Posisi Persentasenya */}
+      {canvasElements.map((item) => (
+        <EditableWrapper
+          key={item.id}
+          id={item.id}
+          label={item.label || item.type}
+          x={item.x}
+          y={item.y}
+          width={item.width}
+          height={item.height}
+          zIndex={item.zIndex || 40}
+          locked={Boolean(item.locked)}
+          enableSnap={isGridSnapEnabled}
+          audioUrl={item.audioUrl}
+          isCanvasEditMode={isEditMode}
+          isSelected={selectedCanvasItemId === item.id}
+          isNativeElement={false}
+          containerRef={containerRef}
+          onSelect={(id) => setSelectedCanvasItemId(id)}
+          onChangeBounds={(id, bounds) => {
+            updateElementTransient(resolvedSlideId, id, {
+              x: bounds.x,
+              y: bounds.y,
+              width: bounds.width,
+              height: bounds.height,
+            });
+          }}
+          onCommitHistory={commitToHistory}
+          onDuplicate={(id) => duplicateCanvasElement(resolvedSlideId, id)}
+          onLayerOrder={(id, dir) =>
+            reorderCanvasElementLayer(resolvedSlideId, id, dir)
+          }
+          onToggleLock={(id) => toggleCanvasElementLock(resolvedSlideId, id)}
+          onTestAudio={(id, url) => handlePlayAudioForItem(id, url)}
+          onDelete={(id) => deleteCanvasElement(resolvedSlideId, id)}
+          onSnapChange={setSnapGuides}
+          onTriggerAction={() => handleTriggerElementAction(item)}
+          hoverEffect={item.style?.hoverEffect || 'none'}
+        >
+          <CanvasElementRenderer
+            item={item}
+            isPlayingAudio={playingAudioItemId === item.id}
+          />
+        </EditableWrapper>
+      ))}
+
+      {/* 3. Modal Pop-up Interaktif saat `action.type === 'open-popup'` Dipicu Pengguna */}
       {activePopup && (
         <div
-          onClick={() => setActivePopup(null)}
-          className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 pointer-events-auto"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="canvas-popup-title"
+          data-testid="canvas-action-popup"
+          onClick={(e) => {
+            e.stopPropagation();
+            setActivePopup(null);
+          }}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 200,
+            backgroundColor: 'rgba(6, 9, 19, 0.82)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+            pointerEvents: 'auto',
+          }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-yellow-400/40 text-white rounded-2xl max-w-md w-full p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+            style={{
+              width: '100%',
+              maxWidth: '420px',
+              borderRadius: '10px',
+              backgroundColor: '#0F172A',
+              border: '1px solid #F59E0B',
+              padding: '20px',
+              color: '#F8FAFC',
+              boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)',
+            }}
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-              <h3 className="text-lg font-bold text-yellow-400">{activePopup.title}</h3>
-              <button
-                type="button"
-                onClick={() => setActivePopup(null)}
-                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                marginBottom: '10px',
+              }}
+            >
+              <h4
+                id="canvas-popup-title"
+                style={{
+                  margin: 0,
+                  fontSize: '16px',
+                  fontWeight: 700,
+                  color: '#FBBF24',
+                }}
               >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-line">
-              {activePopup.content}
-            </p>
-            <div className="mt-6 flex justify-end">
+                {activePopup.title}
+              </h4>
               <button
                 type="button"
+                data-testid="btn-close-canvas-popup"
                 onClick={() => setActivePopup(null)}
-                className="px-4 py-2 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold text-xs rounded-xl transition"
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #334155',
+                  backgroundColor: '#1E293B',
+                  color: '#F8FAFC',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
               >
                 Tutup
               </button>
             </div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: '13px',
+                lineHeight: 1.55,
+                color: '#E2E8F0',
+              }}
+            >
+              {activePopup.content}
+            </p>
+            {activePopup.externalUrl && (
+              <div style={{ marginTop: '14px' }}>
+                <a
+                  href={activePopup.externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="canvas-popup-external-link"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '7px 14px',
+                    borderRadius: '6px',
+                    backgroundColor: '#F59E0B',
+                    color: '#090D16',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                  }}
+                >
+                  Buka Tautan ↗
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}
     </div>
   );
+
+  if (mode === 'player-portal') {
+    if (!portalTarget) return null;
+    return createPortal(overlayContent, portalTarget);
+  }
+
+  return overlayContent;
 };
+
+export default CanvasStageOverlay;
+
