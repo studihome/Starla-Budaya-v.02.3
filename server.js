@@ -13,6 +13,7 @@ app.use((req, res, next) => {
 
   if (
     req.path === '/' ||
+    req.path === '/admin' ||
     req.path === '/index.html' ||
     req.path === '/story.html' ||
     req.path.endsWith('.html')
@@ -38,8 +39,8 @@ app.use(
   })
 );
 
-// Fallback to index.html for root or unrecognized navigation routes
-app.get('/', (req, res) => {
+// Fallback to index.html for root or /admin route
+app.get(['/', '/admin'], (req, res) => {
   res.sendFile(path.join(ROOT_DIR, 'index.html'));
 });
 

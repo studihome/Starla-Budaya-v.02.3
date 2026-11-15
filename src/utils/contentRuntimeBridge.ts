@@ -113,6 +113,30 @@ export function applySlidePatch(
     }
   }
 
+  const nextAudioCatalog = { ...prev.audioCatalog };
+  if (patch.audios) {
+    for (const aud of patch.audios) {
+      if (aud.assetId && nextAudioCatalog[aud.assetId]) {
+        nextAudioCatalog[aud.assetId] = {
+          ...nextAudioCatalog[aud.assetId],
+          url: aud.url,
+        };
+      }
+    }
+  }
+
+  const nextImageCatalog = { ...prev.imageCatalog };
+  if (patch.images) {
+    for (const img of patch.images) {
+      if (img.assetId && nextImageCatalog[img.assetId]) {
+        nextImageCatalog[img.assetId] = {
+          ...nextImageCatalog[img.assetId],
+          url: img.url,
+        };
+      }
+    }
+  }
+
   return {
     ...prev,
     slides: {
@@ -120,6 +144,8 @@ export function applySlidePatch(
       [slideId]: updatedSlide,
     },
     svgTextCommandSets: nextCommandSets,
+    audioCatalog: nextAudioCatalog,
+    imageCatalog: nextImageCatalog,
   };
 }
 

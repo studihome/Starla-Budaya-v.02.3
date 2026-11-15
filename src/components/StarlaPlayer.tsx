@@ -22,13 +22,13 @@ interface StarlaWindow extends Window {
 
 /**
  * Komponen Player Utama STARLA BUDAYA.
- * Membaca data dari `ContentContext` (dengan nilai awal `defaultContent`)
+ * Membaca data dari `ContentContext` (dengan nilai awal `defaultContent` / `localStorage` / Supabase)
  * dan menyinkronkannya secara non-intrusif dengan engine Articulate Storyline
  * tanpa mengubah satu pun class CSS, layout, animasi, atau logika trigger audio.
  */
 export const StarlaPlayer: React.FC = () => {
   const contextApi = useContent();
-  const { content } = contextApi;
+  const { content, storageSource, isUsingFallback } = contextApi;
   const latestContentRef = useRef<ContentSchema>(content);
   latestContentRef.current = content;
 
@@ -47,6 +47,10 @@ export const StarlaPlayer: React.FC = () => {
       win.StarlaCoreEngine.updateContent = contextApi.updateContent;
       win.StarlaCoreEngine.updateSlideContent = contextApi.updateSlideContent;
       win.StarlaCoreEngine.updateQuizQuestion = contextApi.updateQuizQuestion;
+      win.StarlaCoreEngine.saveContentToCloud = contextApi.saveContentToCloud;
+      win.StarlaCoreEngine.uploadMediaToCloud = contextApi.uploadMediaToCloud;
+      win.StarlaCoreEngine.refreshContentFromCloud =
+        contextApi.refreshContentFromCloud;
       win.StarlaCoreEngine.resetContent = contextApi.resetContent;
     }
 
@@ -86,6 +90,8 @@ export const StarlaPlayer: React.FC = () => {
       data-starla-slides-count={content.slideOrder.length}
       data-starla-quiz-count={content.quizzes.kuisBudaya.questions.length}
       data-starla-audio-count={Object.keys(content.audioCatalog).length}
+      data-starla-storage-source={storageSource}
+      data-starla-fallback-active={String(isUsingFallback)}
       hidden
       aria-hidden="true"
     />

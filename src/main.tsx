@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { defaultContent } from './data/defaultContent';
 import { transformStorylineProvideData } from './utils/contentRuntimeBridge';
+import { loadContentFromLocalStorage } from './lib/supabase';
 
 /**
  * Inisialisasi awal bridge `window.globalProvideData` dan mount React `ContentProvider` + `StarlaPlayer`
@@ -13,7 +14,7 @@ function bootstrapStarlaContentBridge(): void {
 
   const win = window as unknown as Record<string, unknown>;
   if (!win.__STARLA_CONTENT__) {
-    win.__STARLA_CONTENT__ = defaultContent;
+    win.__STARLA_CONTENT__ = loadContentFromLocalStorage() ?? defaultContent;
   }
 
   // Hook globalProvideData apabila sudah didefinisikan oleh bootstrapper.min.js

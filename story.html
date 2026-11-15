@@ -577,7 +577,13 @@
       function wipeResumeStorage() {
         try {
           if (typeof window !== 'undefined') {
-            if (window.localStorage) window.localStorage.clear();
+            if (window.localStorage) {
+              var savedContent = window.localStorage.getItem('starla_budaya_content_backup_v1');
+              var savedMedia = window.localStorage.getItem('starla_budaya_media_backup_v1');
+              window.localStorage.clear();
+              if (savedContent) window.localStorage.setItem('starla_budaya_content_backup_v1', savedContent);
+              if (savedMedia) window.localStorage.setItem('starla_budaya_media_backup_v1', savedMedia);
+            }
             if (window.sessionStorage) window.sessionStorage.clear();
           }
         } catch (e) {}

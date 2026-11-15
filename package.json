@@ -9,6 +9,7 @@
     "lint": "tsc --noEmit && node --check server.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

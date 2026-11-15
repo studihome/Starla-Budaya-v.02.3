@@ -144,6 +144,7 @@ export interface QuizQuestionItem {
     correctLayerId: string | null;
     incorrectLayerId: string | null;
   };
+  hidden?: boolean;
 }
 
 export interface DragDropStatementItem {
@@ -179,6 +180,7 @@ export interface SlideContentItem {
   images: SlideImageRef[];
   videos: SlideVideoRef[];
   quizQuestion: QuizQuestionItem | null;
+  hidden?: boolean;
 }
 
 export interface StorylineVariableConfig {
@@ -199,6 +201,7 @@ export interface ContentSchema {
     sinema: VideoAssetConfig;
   };
   slideOrder: string[];
+  hiddenSlides?: string[];
   slides: Record<string, SlideContentItem>;
   quizzes: {
     kuisBudaya: {

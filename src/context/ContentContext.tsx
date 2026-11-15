@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -19,10 +20,28 @@ import {
   applyQuizQuestionPatch,
   syncContentToLiveDom,
 } from '../utils/contentRuntimeBridge';
+import {
+  getSupabaseEnvConfig,
+  isSupabaseConfigured,
+  fetchMainContentFromCloud,
+  saveMainContentToCloud,
+  uploadMediaAssetToCloud,
+  loadContentFromLocalStorage,
+  saveContentToLocalStorage,
+  clearContentFromLocalStorage,
+  FetchContentResult,
+  SaveContentResult,
+  UploadMediaResult,
+} from '../lib/supabase';
+
+export { getSupabaseEnvConfig, isSupabaseConfigured };
 
 export interface ContentContextValue {
   content: ContentSchema;
   isUsingFallback: boolean;
+  storageSource: 'supabase' | 'localStorage' | 'default';
+  isSyncing: boolean;
+  lastSyncError: string | null;
   updateContent: (updater: ContentUpdater) => void;
   updateSlideContent: (
     slideId: string,
@@ -35,18 +54,45 @@ export interface ContentContextValue {
   updateSvgText: (commandSetId: string, lines: string[]) => void;
   updateAudioUrl: (assetId: number, url: string) => void;
   updateImageUrl: (assetId: number, url: string) => void;
+  saveContentToCloud: (
+    newContent?: ContentSchema | Partial<ContentSchema>
+  ) => Promise<SaveContentResult>;
+  uploadMediaToCloud: (
+    file: File | Blob,
+    customFileName?: string
+  ) => Promise<UploadMediaResult>;
+  refreshContentFromCloud: () => Promise<FetchContentResult>;
   resetContent: () => void;
 }
 
 export const ContentContext = createContext<ContentContextValue>({
   content: defaultContent,
   isUsingFallback: true,
+  storageSource: 'default',
+  isSyncing: false,
+  lastSyncError: null,
   updateContent: () => {},
   updateSlideContent: () => {},
   updateQuizQuestion: () => {},
   updateSvgText: () => {},
   updateAudioUrl: () => {},
   updateImageUrl: () => {},
+  saveContentToCloud: async (newContent) => ({
+    success: true,
+    source: 'localStorage',
+    content: (newContent as ContentSchema) ?? defaultContent,
+  }),
+  uploadMediaToCloud: async () => ({
+    success: false,
+    url: '',
+    path: '',
+    source: 'localStorage',
+  }),
+  refreshContentFromCloud: async () => ({
+    content: defaultContent,
+    supabaseContent: null,
+    source: 'default',
+  }),
   resetContent: () => {},
 });
 
@@ -55,74 +101,83 @@ export interface ContentProviderProps {
   initialSupabaseContent?: ContentSchema | null;
 }
 
-/**
- * Safely reads environment variables across both Next.js (Vercel) and Vite (AI Studio)
- * without throwing if undefined.
- */
-export function getSupabaseEnvConfig(): {
-  url: string | null;
-  anonKey: string | null;
-} {
-  let url: string | null = null;
-  let anonKey: string | null = null;
-
-  try {
-    if (typeof process !== 'undefined' && process.env) {
-      url =
-        process.env.NEXT_PUBLIC_SUPABASE_URL ||
-        process.env.VITE_SUPABASE_URL ||
-        null;
-      anonKey =
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-        process.env.VITE_SUPABASE_ANON_KEY ||
-        null;
-    }
-  } catch {
-    // Ignore process access errors in strict browser sandboxes
-  }
-
-  try {
-    const metaEnv = (import.meta as unknown as { env?: Record<string, string> })
-      ?.env;
-    if (metaEnv) {
-      url =
-        url ||
-        metaEnv.NEXT_PUBLIC_SUPABASE_URL ||
-        metaEnv.VITE_SUPABASE_URL ||
-        null;
-      anonKey =
-        anonKey ||
-        metaEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-        metaEnv.VITE_SUPABASE_ANON_KEY ||
-        null;
-    }
-  } catch {
-    // Ignore import.meta access errors in CommonJS environments
-  }
-
-  return { url, anonKey };
-}
-
 export const ContentProvider: React.FC<ContentProviderProps> = ({
   children,
   initialSupabaseContent = null,
 }) => {
-  const [supabaseContent] = useState<ContentSchema | null>(
+  const [supabaseContent, setSupabaseContent] = useState<ContentSchema | null>(
     initialSupabaseContent
   );
 
   // Guardrail 2: Wajib gunakan pola Fallback `const activeContent = supabaseContent ?? defaultContent;`
   const activeContent = supabaseContent ?? defaultContent;
 
-  const [content, setContent] = useState<ContentSchema>(activeContent);
+  const [content, setContent] = useState<ContentSchema>(() => {
+    if (initialSupabaseContent) return initialSupabaseContent;
+    const localBackup = loadContentFromLocalStorage();
+    return localBackup ?? activeContent;
+  });
 
+  const [storageSource, setStorageSource] = useState<
+    'supabase' | 'localStorage' | 'default'
+  >(() => {
+    if (initialSupabaseContent) return 'supabase';
+    return loadContentFromLocalStorage() ? 'localStorage' : 'default';
+  });
+
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [lastSyncError, setLastSyncError] = useState<string | null>(null);
+
+  const contentRef = useRef<ContentSchema>(content);
+  contentRef.current = content;
+
+  const refreshContentFromCloud =
+    useCallback(async (): Promise<FetchContentResult> => {
+      setIsSyncing(true);
+      try {
+        const result = await fetchMainContentFromCloud();
+        if (result.supabaseContent) {
+          setSupabaseContent(result.supabaseContent);
+        }
+        setContent(result.content);
+        setStorageSource(result.source);
+        setLastSyncError(result.error ?? null);
+        syncContentToLiveDom(result.content);
+        return result;
+      } catch (err) {
+        const fallback = loadContentFromLocalStorage() ?? defaultContent;
+        setContent(fallback);
+        setStorageSource(
+          loadContentFromLocalStorage() ? 'localStorage' : 'default'
+        );
+        setLastSyncError(err instanceof Error ? err.message : String(err));
+        syncContentToLiveDom(fallback);
+        return {
+          content: fallback,
+          supabaseContent: null,
+          source: loadContentFromLocalStorage() ? 'localStorage' : 'default',
+        };
+      } finally {
+        setIsSyncing(false);
+      }
+    }, []);
+
+  // Saat aplikasi dimuat, ambil data JSON konten terbaru dari tabel Supabase `app_contents` (slug = 'main')
   useEffect(() => {
-    setContent(supabaseContent ?? defaultContent);
-  }, [supabaseContent]);
+    if (initialSupabaseContent) {
+      setSupabaseContent(initialSupabaseContent);
+      setContent(initialSupabaseContent);
+      setStorageSource('supabase');
+      syncContentToLiveDom(initialSupabaseContent);
+      return;
+    }
+    void refreshContentFromCloud();
+  }, [initialSupabaseContent, refreshContentFromCloud]);
 
   const updateContent = useCallback((updater: ContentUpdater) => {
     setContent((prev) => {
       const next = resolveUpdatedContent(prev, updater);
+      saveContentToLocalStorage(next);
       syncContentToLiveDom(next);
       return next;
     });
@@ -132,6 +187,7 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
     (slideId: string, patch: Partial<SlideContentItem>) => {
       setContent((prev) => {
         const next = applySlidePatch(prev, slideId, patch);
+        saveContentToLocalStorage(next);
         syncContentToLiveDom(next);
         return next;
       });
@@ -143,6 +199,7 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
     (slideId: string, patch: Partial<QuizQuestionItem>) => {
       setContent((prev) => {
         const next = applyQuizQuestionPatch(prev, slideId, patch);
+        saveContentToLocalStorage(next);
         syncContentToLiveDom(next);
         return next;
       });
@@ -166,6 +223,7 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
           },
         },
       };
+      saveContentToLocalStorage(next);
       syncContentToLiveDom(next);
       return next;
     });
@@ -186,6 +244,7 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
           },
         },
       };
+      saveContentToLocalStorage(next);
       syncContentToLiveDom(next);
       return next;
     });
@@ -208,16 +267,74 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
           },
         },
       };
+      saveContentToLocalStorage(next);
       syncContentToLiveDom(next);
       return next;
     });
   }, []);
 
+  /**
+   * Menyimpan perubahan konten ke Supabase (`app_contents`, `slug = 'main'`)
+   * dengan fallback otomatis ke `localStorage` jika Supabase belum dikonfigurasi atau gagal.
+   */
+  const saveContentToCloud = useCallback(
+    async (
+      newContent?: ContentSchema | Partial<ContentSchema>
+    ): Promise<SaveContentResult> => {
+      setIsSyncing(true);
+      try {
+        const resolved = newContent
+          ? resolveUpdatedContent(contentRef.current, newContent)
+          : contentRef.current;
+
+        setContent(resolved);
+        syncContentToLiveDom(resolved);
+
+        const result = await saveMainContentToCloud(resolved);
+        if (result.source === 'supabase') {
+          setSupabaseContent(resolved);
+        }
+        setStorageSource(result.source);
+        setLastSyncError(result.error ?? null);
+        return result;
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    []
+  );
+
+  /**
+   * Mengunggah file audio/gambar baru ke Supabase Storage bucket `media-assets`
+   * dengan fallback otomatis ke Data URL + `localStorage` jika Supabase belum dikonfigurasi atau gagal.
+   */
+  const uploadMediaToCloud = useCallback(
+    async (
+      file: File | Blob,
+      customFileName?: string
+    ): Promise<UploadMediaResult> => {
+      setIsSyncing(true);
+      try {
+        const result = await uploadMediaAssetToCloud(file, customFileName);
+        if (result.error) {
+          setLastSyncError(result.error);
+        }
+        return result;
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    []
+  );
+
   const resetContent = useCallback(() => {
-    const fallback = supabaseContent ?? defaultContent;
-    setContent(fallback);
-    syncContentToLiveDom(fallback);
-  }, [supabaseContent]);
+    clearContentFromLocalStorage();
+    setSupabaseContent(null);
+    setContent(defaultContent);
+    setStorageSource('default');
+    setLastSyncError(null);
+    syncContentToLiveDom(defaultContent);
+  }, []);
 
   useEffect(() => {
     syncContentToLiveDom(content);
@@ -226,24 +343,35 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
   const contextValue = useMemo<ContentContextValue>(
     () => ({
       content,
-      isUsingFallback: supabaseContent === null,
+      isUsingFallback: storageSource !== 'supabase',
+      storageSource,
+      isSyncing,
+      lastSyncError,
       updateContent,
       updateSlideContent,
       updateQuizQuestion,
       updateSvgText,
       updateAudioUrl,
       updateImageUrl,
+      saveContentToCloud,
+      uploadMediaToCloud,
+      refreshContentFromCloud,
       resetContent,
     }),
     [
       content,
-      supabaseContent,
+      storageSource,
+      isSyncing,
+      lastSyncError,
       updateContent,
       updateSlideContent,
       updateQuizQuestion,
       updateSvgText,
       updateAudioUrl,
       updateImageUrl,
+      saveContentToCloud,
+      uploadMediaToCloud,
+      refreshContentFromCloud,
       resetContent,
     ]
   );
