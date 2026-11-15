@@ -35,11 +35,28 @@ export type CanvasHoverEffect =
   | 'zoom'
   | 'bounce';
 
+export type CanvasAnimationType =
+  | 'none'
+  | 'fade-in'
+  | 'pop-zoom'
+  | 'slide-up'
+  | 'slide-left'
+  | 'bounce';
+
+export interface CanvasElementAnimation {
+  type: CanvasAnimationType;
+  delay: number;    // Waktu mulai / delay dalam detik (mis. 0 - 10)
+  duration: number; // Durasi animasi dalam detik (mis. 0.2 - 5)
+}
+
+export type ResizeHandleDirection = ResizeDirection;
+
 export interface CanvasElementStyle {
   backgroundColor?: string;
   textColor?: string;
   fontSize?: number;
   fontWeight?: 'normal' | 'medium' | 'bold' | 'extrabold';
+  textAlign?: 'left' | 'center' | 'right';
   borderRadius?: number;
   borderWidth?: number;
   borderColor?: string;
@@ -62,6 +79,8 @@ export interface CanvasElementAction {
   externalUrl?: string;
 }
 
+export type CanvasActionConfig = CanvasElementAction;
+
 export interface CanvasElement {
   id: string;
   name?: string;
@@ -81,6 +100,8 @@ export interface CanvasElement {
   style: CanvasElementStyle;
   // Aksi Interaktif saat Diklik
   action: CanvasElementAction;
+  // Pengaturan Timeline Animasi (Canva / Articulate Style)
+  animation?: CanvasElementAnimation;
 }
 
 export interface OriginalElementOverride {
@@ -93,6 +114,7 @@ export interface OriginalElementOverride {
   customText?: string;
   customImageUrl?: string;
   customAudioUrl?: string;
+  animation?: CanvasElementAnimation;
 }
 
 export interface SlideData {
@@ -181,3 +203,66 @@ export function resolveCanvasHoverStyle(
   }
   return { transform: 'none' };
 }
+
+export const CANVAS_ANIMATION_KEYFRAMES_CSS = `
+@keyframes starlaCanvaFadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes starlaCanvaPopZoom {
+  0% { opacity: 0; transform: scale(0.55); }
+  75% { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes starlaCanvaSlideUp {
+  0% { opacity: 0; transform: translateY(28px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes starlaCanvaSlideLeft {
+  0% { opacity: 0; transform: translateX(32px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes starlaCanvaBounce {
+  0% { opacity: 0; transform: translateY(-28px) scale(0.92); }
+  55% { opacity: 1; transform: translateY(6px) scale(1.03); }
+  80% { transform: translateY(-3px) scale(0.99); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+`;
+
+export function resolveCanvasAnimationCss(
+  animation: CanvasElementAnimation | undefined
+): {
+  animationName?: string;
+  animationDuration?: string;
+  animationDelay?: string;
+  animationFillMode?: string;
+  animationTimingFunction?: string;
+} {
+  if (!animation || !animation.type || animation.type === 'none') {
+    return {};
+  }
+  const keyframeMap: Record<Exclude<CanvasAnimationType, 'none'>, string> = {
+    'fade-in': 'starlaCanvaFadeIn',
+    'pop-zoom': 'starlaCanvaPopZoom',
+    'slide-up': 'starlaCanvaSlideUp',
+    'slide-left': 'starlaCanvaSlideLeft',
+    bounce: 'starlaCanvaBounce',
+  };
+  const animName = keyframeMap[animation.type];
+  if (!animName) return {};
+  const delaySec = Math.max(0, Number(animation.delay) || 0);
+  const durationSec = Math.max(0.1, Number(animation.duration) || 0.6);
+
+  return {
+    animationName: animName,
+    animationDuration: `${durationSec}s`,
+    animationDelay: `${delaySec}s`,
+    animationFillMode: 'both',
+    animationTimingFunction:
+      animation.type === 'bounce' || animation.type === 'pop-zoom'
+        ? 'cubic-bezier(0.22, 1, 0.36, 1)'
+        : 'cubic-bezier(0.16, 1, 0.3, 1)',
+  };
+}
+

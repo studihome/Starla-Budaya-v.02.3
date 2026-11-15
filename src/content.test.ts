@@ -1033,4 +1033,61 @@ test('Magic AI Studio: generateMagicCanvasAiLocal generates 3 bottom menu button
   );
 });
 
+test('Canva White Studio: Per-Element Timeline Animation CSS & Direct DOM Element Overrides', async () => {
+  const { resolveCanvasAnimationCss } = await import('./types/canvas');
+  const {
+    createDefaultCanvasElement,
+    applyElementOverridePatch,
+  } = await import('./features/canvas/canvasMath');
+
+  // 1. Default element starts with 'none' animation
+  const defaultEl = createDefaultCanvasElement('image-button', 0);
+  assert.deepEqual(defaultEl.animation, {
+    type: 'none',
+    delay: 0,
+    duration: 0.6,
+  });
+  assert.deepEqual(resolveCanvasAnimationCss(defaultEl.animation), {});
+
+  // 2. All active animation types resolve valid keyframe CSS object with duration & delay
+  const fadeCss = resolveCanvasAnimationCss({
+    type: 'fade-in',
+    delay: 0.5,
+    duration: 0.8,
+  });
+  assert.equal(fadeCss.animationName, 'starlaCanvaFadeIn');
+  assert.equal(fadeCss.animationDuration, '0.8s');
+  assert.equal(fadeCss.animationDelay, '0.5s');
+
+  const bounceCss = resolveCanvasAnimationCss({
+    type: 'bounce',
+    delay: 0.2,
+    duration: 1.0,
+  });
+  assert.equal(bounceCss.animationName, 'starlaCanvaBounce');
+
+  // 3. Native element override supports customImage + animation
+  const firstSlideId = defaultContent.slideOrder[0];
+  const patched = applyElementOverridePatch(
+    defaultContent,
+    firstSlideId,
+    'img_0',
+    {
+      customImage: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA',
+      animation: { type: 'pop-zoom', delay: 0.3, duration: 0.7 },
+    }
+  );
+  const ov = patched.slides[firstSlideId].elementOverrides?.['img_0'];
+  assert.equal(
+    ov?.customImage,
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA'
+  );
+  assert.deepEqual(ov?.animation, {
+    type: 'pop-zoom',
+    delay: 0.3,
+    duration: 0.7,
+  });
+});
+
+
 

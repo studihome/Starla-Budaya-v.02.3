@@ -414,11 +414,24 @@ export const AdminDashboard: React.FC = () => {
         aria-modal="true"
         aria-labelledby="admin-auth-heading"
         data-testid="admin-pin-gate"
+        style={{
+          backgroundColor: '#F1F5F9',
+          color: '#0F172A',
+        }}
       >
-        <header className="sa-topbar">
-          <span className="sa-brand">STARLA BUDAYA Admin</span>
+        <header
+          className="sa-topbar"
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderBottom: '1px solid #E2E8F0',
+            color: '#0F172A',
+          }}
+        >
+          <span className="sa-brand" style={{ color: '#0F172A' }}>
+            STARLA BUDAYA Admin
+          </span>
           <nav className="sa-topnav" aria-label="Status Keamanan">
-            <span style={{ fontSize: '13px', color: '#94A3B8' }}>
+            <span style={{ fontSize: '13px', color: '#475569' }}>
               Autentikasi PIN Diperlukan
             </span>
           </nav>
@@ -426,20 +439,37 @@ export const AdminDashboard: React.FC = () => {
             type="button"
             className="sa-btn sa-btn-ghost"
             onClick={handleCloseAdmin}
+            style={{
+              backgroundColor: '#F8FAFC',
+              color: '#0F172A',
+              border: '1px solid #CBD5E1',
+            }}
           >
             Kembali ke Player
           </button>
         </header>
 
-        <main className="sa-auth-wrap">
-          <form className="sa-auth-box" onSubmit={handlePinSubmit}>
+        <main
+          className="sa-auth-wrap"
+          style={{ backgroundColor: '#F1F5F9' }}
+        >
+          <form
+            className="sa-auth-box"
+            onSubmit={handlePinSubmit}
+            style={{
+              backgroundColor: '#FFFFFF',
+              border: '1px solid #E2E8F0',
+              boxShadow: '0 20px 40px -15px rgba(15, 23, 42, 0.1)',
+              color: '#0F172A',
+            }}
+          >
             <h1
               id="admin-auth-heading"
               style={{
                 margin: '0 0 8px 0',
                 fontSize: '22px',
                 fontWeight: 700,
-                color: '#F8FAFC',
+                color: '#0F172A',
               }}
             >
               Akses Admin Dashboard
@@ -448,11 +478,12 @@ export const AdminDashboard: React.FC = () => {
               style={{
                 margin: '0 0 20px 0',
                 fontSize: '13px',
-                color: '#94A3B8',
+                color: '#475569',
               }}
             >
-              Masukkan PIN Keamanan Admin untuk mengelola slide pembelajaran,
-              narasi audio, soal Kuis Budaya, dan sinkronisasi Supabase Cloud.
+              Masukkan PIN Keamanan Admin untuk membuka Canva White Studio,
+              mengelola slide pembelajaran, narasi audio, soal Kuis Budaya, dan
+              sinkronisasi Supabase Cloud.
             </p>
 
             {authError && (
@@ -466,7 +497,11 @@ export const AdminDashboard: React.FC = () => {
             )}
 
             <div className="sa-field">
-              <label htmlFor="admin-pin-input" className="sa-label">
+              <label
+                htmlFor="admin-pin-input"
+                className="sa-label"
+                style={{ color: '#0F172A' }}
+              >
                 PIN Keamanan Admin
               </label>
               <input
@@ -478,6 +513,11 @@ export const AdminDashboard: React.FC = () => {
                 placeholder="Masukkan PIN Admin (contoh: 123456)"
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  color: '#0F172A',
+                  border: '1px solid #CBD5E1',
+                }}
               />
               <div
                 style={{
@@ -505,6 +545,11 @@ export const AdminDashboard: React.FC = () => {
                 type="button"
                 className="sa-btn sa-btn-ghost"
                 onClick={handleCloseAdmin}
+                style={{
+                  backgroundColor: '#F8FAFC',
+                  color: '#334155',
+                  border: '1px solid #CBD5E1',
+                }}
               >
                 Batal
               </button>
@@ -532,6 +577,8 @@ export const AdminDashboard: React.FC = () => {
     >
       {activeTab === 'studio' ? (
         <VisualStudioAdmin
+          defaultOpen={true}
+          defaultAuthenticated={true}
           selectedSlideId={selectedSlideId}
           onSelectSlideId={(sid) => setSelectedSlideId(sid)}
           onOpenClassicTab={(tab) => setActiveTab(tab)}

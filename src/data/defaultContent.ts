@@ -1,6 +1,8 @@
 import {
   CanvasActionType,
+  CanvasAnimationType,
   CanvasElement,
+  CanvasElementAnimation,
   CanvasElementType,
   CanvasHoverEffect,
   CanvasShadowPreset,
@@ -183,11 +185,14 @@ export interface ElementOverrideConfig {
   customText?: string;
   customImage?: string;
   customAudio?: string;
+  animation?: CanvasElementAnimation;
 }
 
 export type {
   CanvasActionType,
+  CanvasAnimationType,
   CanvasElement,
+  CanvasElementAnimation,
   CanvasElementType,
   CanvasHoverEffect,
   CanvasShadowPreset,

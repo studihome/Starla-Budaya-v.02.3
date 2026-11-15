@@ -27,6 +27,78 @@ export const RESIZE_HANDLES: ResizeHandleDirection[] = [
   'w',
 ];
 
+export interface RectPct {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function computeMoveRectPct(
+  initialRect: RectPct,
+  deltaXPct: number,
+  deltaYPct: number,
+  snapStepPct = 0
+): RectPct {
+  const maxX = Math.max(0, 100 - initialRect.width);
+  const maxY = Math.max(0, 100 - initialRect.height);
+  let nextX = clampPct(initialRect.x + deltaXPct, 0, maxX);
+  let nextY = clampPct(initialRect.y + deltaYPct, 0, maxY);
+  if (snapStepPct > 0) {
+    nextX = clampPct(Math.round(nextX / snapStepPct) * snapStepPct, 0, maxX);
+    nextY = clampPct(Math.round(nextY / snapStepPct) * snapStepPct, 0, maxY);
+  }
+  return {
+    x: roundPct(nextX),
+    y: roundPct(nextY),
+    width: initialRect.width,
+    height: initialRect.height,
+  };
+}
+
+export function computeResizeRectPct(
+  initialRect: RectPct,
+  dir: ResizeHandleDirection,
+  deltaXPct: number,
+  deltaYPct: number,
+  minW = 4,
+  minH = 4,
+  snapStepPct = 0
+): RectPct {
+  let x = initialRect.x;
+  let y = initialRect.y;
+  let width = initialRect.width;
+  let height = initialRect.height;
+
+  if (dir.includes('e')) {
+    width = clampPct(initialRect.width + deltaXPct, minW, 100 - initialRect.x);
+  } else if (dir.includes('w')) {
+    const rightEdge = initialRect.x + initialRect.width;
+    x = clampPct(initialRect.x + deltaXPct, 0, rightEdge - minW);
+    width = roundPct(rightEdge - x);
+  }
+
+  if (dir.includes('s')) {
+    height = clampPct(initialRect.height + deltaYPct, minH, 100 - initialRect.y);
+  } else if (dir.includes('n')) {
+    const bottomEdge = initialRect.y + initialRect.height;
+    y = clampPct(initialRect.y + deltaYPct, 0, bottomEdge - minH);
+    height = roundPct(bottomEdge - y);
+  }
+
+  if (snapStepPct > 0) {
+    width = clampPct(Math.round(width / snapStepPct) * snapStepPct, minW, 100 - x);
+    height = clampPct(Math.round(height / snapStepPct) * snapStepPct, minH, 100 - y);
+  }
+
+  return {
+    x: roundPct(x),
+    y: roundPct(y),
+    width: roundPct(width),
+    height: roundPct(height),
+  };
+}
+
 export const SNAP_CENTER_PCT = 50;
 export const SNAP_THRESHOLD_PCT = 1.2;
 export const MIN_ELEMENT_SIZE_PCT = 1;
@@ -609,6 +681,11 @@ export function createDefaultCanvasElement(
       ...base.action,
       ...(customPatch?.action || {}),
     },
+    animation: customPatch?.animation ?? {
+      type: 'none',
+      delay: 0,
+      duration: 0.6,
+    },
   };
 }
 
@@ -680,6 +757,9 @@ export function applyUpdateCanvasElement(
           : item.height,
       style: patch.style ? { ...item.style, ...patch.style } : item.style,
       action: patch.action ? { ...item.action, ...patch.action } : item.action,
+      animation: patch.animation
+        ? { ...(item.animation || { type: 'none', delay: 0, duration: 0.6 }), ...patch.animation }
+        : item.animation,
     };
   });
 
