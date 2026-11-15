@@ -14,12 +14,12 @@ import {
   MousePointerClick,
 } from 'lucide-react';
 import {
-  ResizeHandleDirection,
   CanvasActionConfig,
   CanvasElementAnimation,
   resolveCanvasAnimationCss,
-} from '../../types/canvas';
+} from '../../data/defaultContent';
 import {
+  ResizeHandleDirection,
   computeMoveRectPct,
   computeResizeRectPct,
   RectPct,

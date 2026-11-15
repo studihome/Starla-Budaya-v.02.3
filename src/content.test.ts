@@ -802,19 +802,19 @@ test('Tahap 5: VisualStudioAdmin (Undo/Redo >= 20 langkah, Duplikat Slide, Layer
   );
 });
 
-test('src/types/canvas.ts: CanvasElement & CanvasActionType schema, shadow presets, pulse hover, objectFit & action fields', async () => {
+test('CanvasElement & CanvasActionType schema, shadow presets, pulse hover, objectFit & action fields', async () => {
   const {
     resolveCanvasShadowCss,
     normalizeShadowPreset,
     resolveCanvasHoverStyle,
-  } = await import('./types/canvas');
+  } = await import('./data/defaultContent');
   const {
     MIN_ELEMENT_SIZE_PCT,
     createDefaultCanvasElement,
     applyAddCanvasElement,
     applyUpdateCanvasElement,
   } = await import('./features/canvas/canvasMath');
-  const typeModule = await import('./types/canvas');
+  const typeModule = await import('./data/defaultContent');
 
   // 1. Minimum element size is 1% (1 - 100%)
   assert.equal(MIN_ELEMENT_SIZE_PCT, 1);
@@ -1033,8 +1033,8 @@ test('Magic AI Studio: generateMagicCanvasAiLocal generates 3 bottom menu button
   );
 });
 
-test('Canva White Studio: Per-Element Timeline Animation CSS & Direct DOM Element Overrides', async () => {
-  const { resolveCanvasAnimationCss } = await import('./types/canvas');
+test('Per-Element Timeline Animation CSS & Direct DOM Element Overrides + Cleanup Verification', async () => {
+  const { resolveCanvasAnimationCss } = await import('./data/defaultContent');
   const {
     createDefaultCanvasElement,
     applyElementOverridePatch,

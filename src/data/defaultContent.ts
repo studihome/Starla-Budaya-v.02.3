@@ -1,12 +1,180 @@
-import {
-  CanvasActionType,
-  CanvasAnimationType,
-  CanvasElement,
-  CanvasElementAnimation,
-  CanvasElementType,
-  CanvasHoverEffect,
-  CanvasShadowPreset,
-} from '../types/canvas';
+export type ResizeDirection =
+  | 'nw'
+  | 'n'
+  | 'ne'
+  | 'e'
+  | 'se'
+  | 's'
+  | 'sw'
+  | 'w';
+
+export type CanvasActionType =
+  | 'none'
+  | 'goto-slide'
+  | 'play-audio'
+  | 'open-popup'
+  | 'external-url';
+
+export type CanvasElementType =
+  | 'image-button'
+  | 'text'
+  | 'image'
+  | 'audio-button'
+  | 'audio-hotspot';
+
+export type CanvasShadowPreset = 'none' | 'sm' | 'md' | 'lg' | 'xl' | 'glow';
+
+export type CanvasHoverEffect =
+  | 'none'
+  | 'scale'
+  | 'lift'
+  | 'pulse'
+  | 'glow'
+  | 'zoom'
+  | 'bounce';
+
+export type CanvasAnimationType =
+  | 'none'
+  | 'fade-in'
+  | 'pop-zoom'
+  | 'slide-up'
+  | 'slide-left'
+  | 'bounce';
+
+export interface CanvasElementAnimation {
+  type: CanvasAnimationType;
+  delay: number;
+  duration: number;
+}
+
+export interface CanvasElement {
+  id: string;
+  name?: string;
+  type: CanvasElementType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zIndex: number;
+  locked?: boolean;
+  hidden?: boolean;
+  label?: string;
+  imageUrl?: string;
+  audioUrl?: string;
+  style: {
+    backgroundColor?: string;
+    textColor?: string;
+    fontSize?: number;
+    fontWeight?: 'normal' | 'medium' | 'bold' | 'extrabold';
+    textAlign?: 'left' | 'center' | 'right';
+    borderRadius?: number;
+    borderWidth?: number;
+    borderColor?: string;
+    opacity?: number;
+    shadow?: CanvasShadowPreset | boolean;
+    hoverEffect?: CanvasHoverEffect;
+    objectFit?: 'cover' | 'contain' | 'fill';
+    textPosition?: 'overlay' | 'bottom' | 'top' | 'hidden';
+    iconName?: string;
+  };
+  action: {
+    type: CanvasActionType;
+    targetSlideIndex?: number;
+    targetSlideId?: string;
+    audioUrl?: string;
+    popupTitle?: string;
+    popupBody?: string;
+    popupContent?: string;
+    externalUrl?: string;
+  };
+  animation?: CanvasElementAnimation;
+}
+
+export type CanvasActionConfig = CanvasElement['action'];
+
+export function resolveCanvasShadowCss(
+  shadow: CanvasShadowPreset | boolean | undefined
+): string {
+  if (!shadow || shadow === 'none') return 'none';
+  if (shadow === true || shadow === 'md') return '0 8px 20px rgba(0, 0, 0, 0.45)';
+  if (shadow === 'sm') return '0 3px 8px rgba(0, 0, 0, 0.32)';
+  if (shadow === 'lg') return '0 16px 34px rgba(0, 0, 0, 0.65)';
+  if (shadow === 'xl') return '0 24px 48px rgba(0, 0, 0, 0.78)';
+  if (shadow === 'glow') return '0 0 22px rgba(245, 158, 11, 0.78)';
+  return 'none';
+}
+
+export function normalizeShadowPreset(
+  shadow: CanvasShadowPreset | boolean | undefined
+): CanvasShadowPreset {
+  if (!shadow || shadow === 'none') return 'none';
+  if (shadow === true) return 'md';
+  return shadow;
+}
+
+export function resolveCanvasHoverStyle(
+  hoverEffect: CanvasHoverEffect | undefined,
+  isHovered: boolean
+): { transform: string; boxShadow?: string } {
+  if (!isHovered || !hoverEffect || hoverEffect === 'none') {
+    return { transform: 'none' };
+  }
+  if (hoverEffect === 'scale' || hoverEffect === 'zoom') {
+    return { transform: 'scale(1.06)' };
+  }
+  if (hoverEffect === 'lift' || hoverEffect === 'bounce') {
+    return { transform: 'translateY(-5px) scale(1.02)' };
+  }
+  if (hoverEffect === 'pulse') {
+    return {
+      transform: 'scale(1.04)',
+      boxShadow: '0 0 24px rgba(56, 189, 248, 0.85)',
+    };
+  }
+  if (hoverEffect === 'glow') {
+    return {
+      transform: 'none',
+      boxShadow: '0 0 22px rgba(251, 191, 36, 0.85)',
+    };
+  }
+  return { transform: 'none' };
+}
+
+export function resolveCanvasAnimationCss(
+  animation: CanvasElementAnimation | undefined
+): {
+  animationName?: string;
+  animationDuration?: string;
+  animationDelay?: string;
+  animationFillMode?: string;
+  animationTimingFunction?: string;
+} {
+  if (!animation || !animation.type || animation.type === 'none') {
+    return {};
+  }
+  const keyframeMap: Record<Exclude<CanvasAnimationType, 'none'>, string> = {
+    'fade-in': 'starlaCanvaFadeIn',
+    'pop-zoom': 'starlaCanvaPopZoom',
+    'slide-up': 'starlaCanvaSlideUp',
+    'slide-left': 'starlaCanvaSlideLeft',
+    bounce: 'starlaCanvaBounce',
+  };
+  const animName = keyframeMap[animation.type];
+  if (!animName) return {};
+  const delaySec = Math.max(0, Number(animation.delay) || 0);
+  const durationSec = Math.max(0.1, Number(animation.duration) || 0.6);
+
+  return {
+    animationName: animName,
+    animationDuration: `${durationSec}s`,
+    animationDelay: `${delaySec}s`,
+    animationFillMode: 'both',
+    animationTimingFunction:
+      animation.type === 'bounce' || animation.type === 'pop-zoom'
+        ? 'cubic-bezier(0.22, 1, 0.36, 1)'
+        : 'cubic-bezier(0.16, 1, 0.3, 1)',
+  };
+}
 
 /**
  * STARLA BUDAYA - Default Static Content & TypeScript Schema (Tahap 1: Zero-Regression Refactoring)
@@ -187,16 +355,6 @@ export interface ElementOverrideConfig {
   customAudio?: string;
   animation?: CanvasElementAnimation;
 }
-
-export type {
-  CanvasActionType,
-  CanvasAnimationType,
-  CanvasElement,
-  CanvasElementAnimation,
-  CanvasElementType,
-  CanvasHoverEffect,
-  CanvasShadowPreset,
-};
 
 export type CanvasElementStyle = CanvasElement['style'];
 

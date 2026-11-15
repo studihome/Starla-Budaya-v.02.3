@@ -2,7 +2,7 @@ import {
   CanvasElement,
   CanvasElementType,
   CanvasActionType,
-} from '../../types/canvas';
+} from '../../data/defaultContent';
 import { clampPct } from '../canvas/canvasMath';
 
 export interface MagicCanvasAiRequest {

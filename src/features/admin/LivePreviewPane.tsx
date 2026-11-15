@@ -6,7 +6,6 @@ import {
 } from '../../data/defaultContent';
 import { useContent } from '../../context/ContentContext';
 import { isSlideHidden } from './adminHelpers';
-import { CanvasStageOverlay } from '../canvas/CanvasStageOverlay';
 
 export interface LivePreviewPaneProps {
   content: ContentSchema;
@@ -347,12 +346,6 @@ export const LivePreviewPane: React.FC<LivePreviewPaneProps> = ({
                   )}
                 </div>
 
-                {/* Overlay Visual Canvas Engine (ElementOverrides & CanvasElements) */}
-                <CanvasStageOverlay
-                  slideIdOverride={targetSlideId}
-                  mode="embedded"
-                  onNavigateSlide={(id) => onSelectSlide(id)}
-                />
               </div>
             ) : null}
 
