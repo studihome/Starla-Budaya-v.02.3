@@ -1,10 +1,20 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
   "cleanUrls": true,
+  "trailingSlash": false,
   "rewrites": [
     {
       "source": "/admin",
       "destination": "/index.html"
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/story",
+      "destination": "/story.html"
     }
   ],
   "headers": [
@@ -23,6 +33,15 @@
     },
     {
       "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/admin",
       "headers": [
         {
           "key": "Cache-Control",

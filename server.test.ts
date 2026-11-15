@@ -108,3 +108,46 @@ test('server serves index.html, story.html, and video_5gKzK4lbTf6_22_56_1280x720
     server.close();
   }
 });
+
+test('Vercel Serverless Function compatibility: exported handler is directly callable and serves / and /admin without 500 error', async () => {
+  const serverModule = require('./server.js');
+  assert.equal(typeof serverModule, 'function');
+  assert.equal(typeof serverModule.default, 'function');
+  assert.equal(typeof serverModule.app, 'function');
+
+  const vercelJson = JSON.parse(
+    fs.readFileSync(path.join(process.cwd(), 'vercel.json'), 'utf8')
+  );
+  assert.equal(vercelJson.cleanUrls, true);
+  assert.ok(
+    Array.isArray(vercelJson.rewrites) &&
+      vercelJson.rewrites.some(
+        (r: { source: string; destination: string }) =>
+          r.source === '/admin' && r.destination === '/index.html'
+      )
+  );
+
+  // Simulate Vercel Serverless Function launcher wrapping the default export directly with http.createServer(handler)
+  const serverlessServer = await new Promise<http.Server>((resolve, reject) => {
+    const srv = http.createServer(serverModule);
+    srv.listen(0, '127.0.0.1', () => resolve(srv));
+    srv.on('error', reject);
+  });
+
+  try {
+    const rootRes = await request(serverlessServer, '/');
+    assert.equal(rootRes.status, 200);
+    assert.ok(rootRes.body.includes('<title>STARLA BUDAYA</title>'));
+
+    const adminRes = await request(serverlessServer, '/admin');
+    assert.equal(adminRes.status, 200);
+    assert.ok(adminRes.body.includes('<title>STARLA BUDAYA</title>'));
+
+    const adminQueryRes = await request(serverlessServer, '/?mode=admin');
+    assert.equal(adminQueryRes.status, 200);
+    assert.ok(adminQueryRes.body.includes('<title>STARLA BUDAYA</title>'));
+  } finally {
+    serverlessServer.close();
+  }
+});
+
