@@ -4,7 +4,9 @@ import {
   SlideContentItem,
   QuizQuestionItem,
 } from '../../data/defaultContent';
+import { useContent } from '../../context/ContentContext';
 import { isSlideHidden } from './adminHelpers';
+import { CanvasStageOverlay } from '../canvas/CanvasStageOverlay';
 
 export interface LivePreviewPaneProps {
   content: ContentSchema;
@@ -25,6 +27,7 @@ export const LivePreviewPane: React.FC<LivePreviewPaneProps> = ({
   onPlayTestAudio,
   playingAudioUrl,
 }) => {
+  const { isCanvasEditMode, setIsCanvasEditMode } = useContent();
   const [previewMode, setPreviewMode] = useState<'canvas' | 'player'>('canvas');
   const [iframeRefreshKey, setIframeRefreshKey] = useState<number>(1);
   const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
@@ -112,6 +115,7 @@ export const LivePreviewPane: React.FC<LivePreviewPaneProps> = ({
         >
           <button
             type="button"
+            data-testid="btn-preview-canvas-mode"
             onClick={() => setPreviewMode('canvas')}
             className={`sa-btn sa-btn-sm ${
               previewMode === 'canvas' ? 'sa-btn-primary' : 'sa-btn-ghost'
@@ -119,6 +123,20 @@ export const LivePreviewPane: React.FC<LivePreviewPaneProps> = ({
             style={{ border: 'none' }}
           >
             Kanvas Visual
+          </button>
+          <button
+            type="button"
+            data-testid="btn-preview-edit-toggle"
+            onClick={() => {
+              setPreviewMode('canvas');
+              setIsCanvasEditMode(!isCanvasEditMode);
+            }}
+            className={`sa-btn sa-btn-sm ${
+              isCanvasEditMode ? 'sa-btn-primary' : 'sa-btn-ghost'
+            }`}
+            style={{ border: 'none' }}
+          >
+            {isCanvasEditMode ? 'Edit Kanvas: ON' : 'Uji Pengguna'}
           </button>
           <button
             type="button"
@@ -315,7 +333,7 @@ export const LivePreviewPane: React.FC<LivePreviewPaneProps> = ({
                         color: '#E2E8F0',
                         maxHeight: '84px',
                         overflowY: 'auto',
-                        display: ' flex',
+                        display: 'flex',
                         flexDirection: 'column',
                         gap: '4px',
                       }}
@@ -328,6 +346,13 @@ export const LivePreviewPane: React.FC<LivePreviewPaneProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Overlay Visual Canvas Engine (ElementOverrides & CanvasElements) */}
+                <CanvasStageOverlay
+                  slideIdOverride={targetSlideId}
+                  mode="embedded"
+                  onNavigateSlide={(id) => onSelectSlide(id)}
+                />
               </div>
             ) : null}
 

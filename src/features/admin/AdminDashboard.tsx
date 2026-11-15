@@ -31,8 +31,10 @@ import {
 } from './adminHelpers';
 import { ensureAdminStylesMounted } from './adminStyles';
 import { LivePreviewPane } from './LivePreviewPane';
+import { CanvasPropertyInspector } from '../canvas/CanvasPropertyInspector';
+import { VisualStudioAdmin } from './VisualStudioAdmin';
 
-type AdminTab = 'slides' | 'quiz' | 'media' | 'meta' | 'backup';
+type AdminTab = 'studio' | 'slides' | 'quiz' | 'media' | 'meta' | 'backup';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -55,7 +57,7 @@ export const AdminDashboard: React.FC = () => {
   const [pinInput, setPinInput] = useState<string>('');
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<AdminTab>('slides');
+  const [activeTab, setActiveTab] = useState<AdminTab>('studio');
   const [showSplitPreview, setShowSplitPreview] = useState<boolean>(true);
   const [statusBanner, setStatusBanner] = useState<{
     type: 'success' | 'error' | 'info';
@@ -528,17 +530,37 @@ export const AdminDashboard: React.FC = () => {
       className="starla-admin-portal"
       data-testid="admin-dashboard-workspace"
     >
-      {/* 1. Top Bar (3-Zone Contract: Brand — 5 Single-Line Nav Links — 1 Primary Action) */}
+      {activeTab === 'studio' ? (
+        <VisualStudioAdmin
+          selectedSlideId={selectedSlideId}
+          onSelectSlideId={(sid) => setSelectedSlideId(sid)}
+          onOpenClassicTab={(tab) => setActiveTab(tab)}
+          onCloseAdmin={handleCloseAdmin}
+          onStatusMessage={(type, message) =>
+            setStatusBanner({ type, message })
+          }
+        />
+      ) : (
+        <>
+      {/* 1. Top Bar (3-Zone Contract: Brand — Nav Links — 1 Primary Action) */}
       <header className="sa-topbar">
         <button
           type="button"
           className="sa-brand"
-          onClick={() => setActiveTab('slides')}
+          onClick={() => setActiveTab('studio')}
         >
           STARLA BUDAYA Admin
         </button>
 
         <nav className="sa-topnav" aria-label="Navigasi Modul Admin">
+          <button
+            type="button"
+            data-testid="tab-visual-studio"
+            className={`sa-navlink ${activeTab === ('studio' as AdminTab) ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('studio')}
+          >
+            ★ Visual Studio
+          </button>
           <button
             type="button"
             className={`sa-navlink ${activeTab === 'slides' ? 'is-active' : ''}`}
@@ -989,6 +1011,9 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                       </div>
                     </div>
+
+                    {/* Visual Canvas Engine Inspector (WYSIWYG Builder: CanvasElements & ElementOverrides) */}
+                    <CanvasPropertyInspector slideId={activeSlide.id} />
 
                     {/* Bagian Teks & Instruksi Slide */}
                     <div className="sa-section">
@@ -2253,8 +2278,11 @@ export const AdminDashboard: React.FC = () => {
           />
         )}
       </main>
+        </>
+      )}
     </div>
   );
 };
 
 export default AdminDashboard;
+

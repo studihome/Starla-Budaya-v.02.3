@@ -506,3 +506,474 @@ test('Tahap 3: Admin PIN authentication, route detection (?mode=admin & /admin),
   assert.ok(invalidResult.error);
 });
 
+test('Tahap 4: Visual Canvas Engine (elementOverrides, hiddenElementIds, canvasElements, 60fps pointer math, 8 resize handles & snap guides)', async () => {
+  const {
+    RESIZE_HANDLES,
+    computeDragPositionPct,
+    computeResizeBoundsPct,
+    applyElementOverridePatch,
+    applyHideNativeElement,
+    applyRestoreNativeElement,
+    applyAddCanvasElement,
+    applyUpdateCanvasElement,
+    applyDeleteCanvasElement,
+    applyDuplicateCanvasElement,
+  } = await import('./features/canvas/canvasMath');
+
+  // 1. 8 Resize Handles verified
+  assert.equal(RESIZE_HANDLES.length, 8);
+  assert.deepEqual(RESIZE_HANDLES, ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']);
+
+  // 2. Drag percentage conversion + center snap guide (50%)
+  const dragNormal = computeDragPositionPct({
+    startX: 10,
+    startY: 20,
+    width: 20,
+    height: 10,
+    deltaXPx: 72, // +10% of 720px
+    deltaYPx: 40.5, // +10% of 405px
+    containerWidthPx: 720,
+    containerHeightPx: 405,
+  });
+  assert.equal(dragNormal.x, 20);
+  assert.equal(dragNormal.y, 30);
+  assert.equal(dragNormal.snapX, null);
+  assert.equal(dragNormal.snapY, null);
+
+  // Drag near center (x + width/2 = 40.5 + 10 = 50.5 -> snaps to 40 so center is 50%)
+  const dragSnapCenter = computeDragPositionPct({
+    startX: 30,
+    startY: 35,
+    width: 20,
+    height: 10,
+    deltaXPx: 75.6, // +10.5% -> 40.5%
+    deltaYPx: 40.5, // +10% -> 45% (center Y = 50%)
+    containerWidthPx: 720,
+    containerHeightPx: 405,
+  });
+  assert.equal(dragSnapCenter.x, 40);
+  assert.equal(dragSnapCenter.y, 45);
+  assert.equal(dragSnapCenter.snapX, 50);
+  assert.equal(dragSnapCenter.snapY, 50);
+
+  // 3. Resize bounds calculation for SE and NW handles
+  const resizeSE = computeResizeBoundsPct({
+    handle: 'se',
+    startX: 20,
+    startY: 20,
+    startWidth: 25,
+    startHeight: 15,
+    deltaXPx: 72, // +10%
+    deltaYPx: 40.5, // +10%
+    containerWidthPx: 720,
+    containerHeightPx: 405,
+  });
+  assert.equal(resizeSE.x, 20);
+  assert.equal(resizeSE.y, 20);
+  assert.equal(resizeSE.width, 35);
+  assert.equal(resizeSE.height, 25);
+
+  const resizeNW = computeResizeBoundsPct({
+    handle: 'nw',
+    startX: 20,
+    startY: 20,
+    startWidth: 25,
+    startHeight: 15,
+    deltaXPx: -36, // -5%
+    deltaYPx: -40.5, // -10%
+    containerWidthPx: 720,
+    containerHeightPx: 405,
+  });
+  assert.equal(resizeNW.x, 15);
+  assert.equal(resizeNW.y, 10);
+  assert.equal(resizeNW.width, 30);
+  assert.equal(resizeNW.height, 25);
+
+  // 4. Non-destructive elementOverrides & hiddenElementIds + Restore
+  const slideId = '5dLAzY4SKGI';
+  const nativeObjId = defaultContent.slides[slideId].texts[0].objectId;
+
+  const withOverride = applyElementOverridePatch(
+    defaultContent,
+    slideId,
+    nativeObjId,
+    {
+      xDeltaPct: 12.5,
+      yDeltaPct: -4.2,
+      widthPct: 40,
+      heightPct: 15,
+      customText: 'Teks Kustom Baru',
+    }
+  );
+  assert.equal(
+    withOverride.slides[slideId].elementOverrides?.[nativeObjId]?.xDeltaPct,
+    12.5
+  );
+  assert.equal(
+    withOverride.slides[slideId].elementOverrides?.[nativeObjId]?.customText,
+    'Teks Kustom Baru'
+  );
+
+  const afterHideNative = applyHideNativeElement(
+    withOverride,
+    slideId,
+    nativeObjId
+  );
+  assert.equal(
+    afterHideNative.slides[slideId].elementOverrides?.[nativeObjId]?.hidden,
+    true
+  );
+  assert.ok(
+    afterHideNative.slides[slideId].hiddenElementIds?.includes(nativeObjId)
+  );
+
+  const afterRestoreNative = applyRestoreNativeElement(
+    afterHideNative,
+    slideId,
+    nativeObjId
+  );
+  assert.equal(
+    afterRestoreNative.slides[slideId].elementOverrides?.[nativeObjId]?.hidden,
+    false
+  );
+  assert.ok(
+    !afterRestoreNative.slides[slideId].hiddenElementIds?.includes(nativeObjId)
+  );
+
+  // 5. CanvasElements CRUD (Add, Update, Duplicate, Delete)
+  const { nextSchema: withBtn, createdElement } = applyAddCanvasElement(
+    afterRestoreNative,
+    slideId,
+    {
+      type: 'image-button',
+      label: 'Jelajahi Candi Borobudur',
+      x: 32,
+      y: 44,
+      width: 28,
+      height: 12,
+      action: {
+        type: 'open-popup',
+        popupTitle: 'Candi Borobudur',
+        popupContent: 'Warisan budaya dunia di Magelang, Jawa Tengah.',
+      },
+    }
+  );
+  assert.equal(withBtn.slides[slideId].canvasElements?.length, 1);
+  assert.equal(createdElement.x, 32);
+  assert.equal(createdElement.y, 44);
+  assert.equal(createdElement.action.type, 'open-popup');
+
+  const updatedBtnSchema = applyUpdateCanvasElement(
+    withBtn,
+    slideId,
+    createdElement.id,
+    {
+      x: 50,
+      y: 60,
+      style: {
+        ...createdElement.style,
+        backgroundColor: '#16A34A',
+        hoverEffect: 'glow',
+      },
+    }
+  );
+  assert.equal(
+    updatedBtnSchema.slides[slideId].canvasElements?.[0].x,
+    50
+  );
+  assert.equal(
+    updatedBtnSchema.slides[slideId].canvasElements?.[0].style.backgroundColor,
+    '#16A34A'
+  );
+
+  const { nextSchema: withDup, duplicatedElement } =
+    applyDuplicateCanvasElement(updatedBtnSchema, slideId, createdElement.id);
+  assert.ok(duplicatedElement);
+  assert.equal(withDup.slides[slideId].canvasElements?.length, 2);
+  assert.equal(duplicatedElement?.x, 53); // +3% offset
+
+  const afterDeleteCustom = applyDeleteCanvasElement(
+    withDup,
+    slideId,
+    createdElement.id
+  );
+  assert.equal(afterDeleteCustom.slides[slideId].canvasElements?.length, 1);
+  assert.equal(
+    afterDeleteCustom.slides[slideId].canvasElements?.[0].id,
+    duplicatedElement?.id
+  );
+});
+
+test('Tahap 5: VisualStudioAdmin (Undo/Redo >= 20 langkah, Duplikat Slide, Layer Forward/Backward, Lock Posisi & Reset Slide)', async () => {
+  const {
+    MAX_HISTORY_STEPS,
+    createInitialHistoryState,
+    pushHistoryState,
+    undoHistoryState,
+    redoHistoryState,
+    applyAddCanvasElement,
+    applyReorderCanvasElementLayer,
+    applyToggleCanvasElementLock,
+    applyResetSingleSlide,
+  } = await import('./features/canvas/canvasMath');
+  const { duplicateSlideItem } = await import('./features/admin/adminHelpers');
+
+  // 1. Verifikasi Undo & Redo History Stack minimal 20 langkah (MAX_HISTORY_STEPS = 25)
+  assert.ok(MAX_HISTORY_STEPS >= 20);
+  let hist = createInitialHistoryState<number>(0);
+  for (let i = 1; i <= 22; i++) {
+    hist = pushHistoryState(hist, i);
+  }
+  assert.equal(hist.present, 22);
+  assert.ok(hist.past.length >= 20);
+
+  // Undo 20 langkah berturut-turut
+  for (let step = 0; step < 20; step++) {
+    hist = undoHistoryState(hist);
+  }
+  assert.equal(hist.present, 2);
+  assert.equal(hist.future.length, 20);
+
+  // Redo 5 langkah
+  for (let step = 0; step < 5; step++) {
+    hist = redoHistoryState(hist);
+  }
+  assert.equal(hist.present, 7);
+
+  // 2. Tambah 2 elemen kanvas, uji Layer Forward/Backward & Lock Posisi
+  const slideId = '5ml7jyaiXGc';
+  const { nextSchema: s1, createdElement: el1 } = applyAddCanvasElement(
+    defaultContent,
+    slideId,
+    { type: 'image-button', label: 'Tombol Pertama' }
+  );
+  const { nextSchema: s2, createdElement: el2 } = applyAddCanvasElement(
+    s1,
+    slideId,
+    { type: 'audio-hotspot', label: 'Tombol Suara Kedua' }
+  );
+
+  // Naikkan layer el1 (Bring Forward)
+  const afterForward = applyReorderCanvasElementLayer(
+    s2,
+    slideId,
+    el1.id,
+    'forward'
+  );
+  const forwardList = afterForward.slides[slideId].canvasElements || [];
+  assert.equal(forwardList[1].id, el1.id);
+
+  // Kunci posisi el1
+  const afterLock = applyToggleCanvasElementLock(
+    afterForward,
+    slideId,
+    el1.id
+  );
+  const lockedEl = afterLock.slides[slideId].canvasElements?.find(
+    (item) => item.id === el1.id
+  );
+  assert.equal(lockedEl?.locked, true);
+
+  // 3. Duplikat Slide beserta seluruh canvasElements-nya
+  const { nextSchema: withDupSlide, duplicatedSlideId } = duplicateSlideItem(
+    afterLock,
+    slideId
+  );
+  assert.ok(duplicatedSlideId);
+  assert.equal(withDupSlide.slideOrder.length, 44);
+  assert.equal(
+    withDupSlide.slides[duplicatedSlideId!].canvasElements?.length,
+    2
+  );
+  assert.notEqual(
+    withDupSlide.slides[duplicatedSlideId!].canvasElements?.[0].id,
+    el2.id
+  );
+
+  // 4. Reset Single Slide ke susunan awal
+  const afterResetSlide = applyResetSingleSlide(
+    withDupSlide,
+    slideId,
+    defaultContent.slides[slideId]
+  );
+  assert.equal(
+    afterResetSlide.slides[slideId].canvasElements?.length ?? 0,
+    0
+  );
+});
+
+test('src/types/canvas.ts: CanvasElement & CanvasActionType schema, shadow presets, pulse hover, objectFit & action fields', async () => {
+  const {
+    resolveCanvasShadowCss,
+    normalizeShadowPreset,
+    resolveCanvasHoverStyle,
+  } = await import('./types/canvas');
+  const {
+    MIN_ELEMENT_SIZE_PCT,
+    createDefaultCanvasElement,
+    applyAddCanvasElement,
+    applyUpdateCanvasElement,
+  } = await import('./features/canvas/canvasMath');
+  const typeModule = await import('./types/canvas');
+
+  // 1. Minimum element size is 1% (1 - 100%)
+  assert.equal(MIN_ELEMENT_SIZE_PCT, 1);
+
+  // 2. Create 'audio-button' element and verify full CanvasElement structure
+  const audioBtn = createDefaultCanvasElement('audio-button', 0, {
+    width: 1,
+    height: 1,
+    style: {
+      backgroundColor: '#0F172A',
+      textColor: '#FBBF24',
+      fontSize: 14,
+      borderRadius: 999,
+      shadow: 'glow',
+      hoverEffect: 'pulse',
+      objectFit: 'cover',
+    },
+    action: {
+      type: 'external-url',
+      targetSlideIndex: 2,
+      popupTitle: 'Portal Kebudayaan',
+      popupBody: 'Kunjungi portal resmi kebudayaan Nusantara.',
+      externalUrl: 'https://kebudayaan.kemdikbud.go.id',
+    },
+  });
+
+  assert.equal(audioBtn.type, 'audio-button');
+  assert.equal(audioBtn.width, 1);
+  assert.equal(audioBtn.height, 1);
+  assert.equal(audioBtn.style.shadow, 'glow');
+  assert.equal(audioBtn.style.hoverEffect, 'pulse');
+  assert.equal(audioBtn.style.objectFit, 'cover');
+  assert.equal(audioBtn.action.type, 'external-url');
+  assert.equal(audioBtn.action.targetSlideIndex, 2);
+  assert.equal(
+    audioBtn.action.popupBody,
+    'Kunjungi portal resmi kebudayaan Nusantara.'
+  );
+  assert.equal(
+    audioBtn.action.externalUrl,
+    'https://kebudayaan.kemdikbud.go.id'
+  );
+
+  // 3. Verify shadow preset resolver ('none' | 'sm' | 'md' | 'lg' | 'glow')
+  assert.equal(resolveCanvasShadowCss('none'), 'none');
+  assert.ok(resolveCanvasShadowCss('sm').includes('rgba'));
+  assert.ok(resolveCanvasShadowCss('md').includes('rgba'));
+  assert.ok(resolveCanvasShadowCss('lg').includes('rgba'));
+  assert.ok(resolveCanvasShadowCss('glow').includes('245, 158, 11'));
+  assert.equal(normalizeShadowPreset(true), 'md');
+  assert.equal(normalizeShadowPreset(false), 'none');
+  assert.equal(normalizeShadowPreset('lg'), 'lg');
+
+  // 4. Verify hover effect resolver ('none' | 'scale' | 'lift' | 'pulse')
+  assert.equal(resolveCanvasHoverStyle('none', true).transform, 'none');
+  assert.equal(resolveCanvasHoverStyle('scale', true).transform, 'scale(1.06)');
+  assert.ok(
+    resolveCanvasHoverStyle('lift', true).transform.includes('translateY')
+  );
+  const pulseStyle = resolveCanvasHoverStyle('pulse', true);
+  assert.equal(pulseStyle.transform, 'scale(1.04)');
+  assert.ok(pulseStyle.boxShadow?.includes('56, 189, 248'));
+
+  // 5. Verify CRUD with CanvasElement on slide schema
+  const slideId = '5dLAzY4SKGI';
+  const { nextSchema, createdElement } = applyAddCanvasElement(
+    defaultContent,
+    slideId,
+    audioBtn
+  );
+  assert.equal(nextSchema.slides[slideId].canvasElements?.[0].type, 'audio-button');
+  const updated = applyUpdateCanvasElement(
+    nextSchema,
+    slideId,
+    createdElement.id,
+    {
+      action: {
+        type: 'goto-slide',
+        targetSlideIndex: 4,
+      },
+    }
+  );
+  assert.equal(
+    updated.slides[slideId].canvasElements?.[0].action.targetSlideIndex,
+    4
+  );
+  assert.ok(typeof typeModule.resolveCanvasShadowCss === 'function');
+});
+
+test('60 FPS Pointer Drag & Resize (move & resize-se) + updateElementTransient + commitToHistory', async () => {
+  const {
+    computePointerMoveResizePct,
+    createInitialHistoryState,
+    updateTransientHistoryState,
+    commitTransientHistoryState,
+    undoHistoryState,
+  } = await import('./features/canvas/canvasMath');
+
+  const startElem = { x: 20, y: 30, width: 25, height: 15 };
+
+  // 1. Mode 'move': +108px on 720px width (+15%) and +40.5px on 405px height (+10%)
+  const moved = computePointerMoveResizePct({
+    mode: 'move',
+    startElem,
+    startMouseX: 100,
+    startMouseY: 100,
+    clientX: 208,
+    clientY: 140.5,
+    stageWidth: 720,
+    stageHeight: 405,
+    enableSnap: false,
+  });
+  assert.equal(moved.x, 35);
+  assert.equal(moved.y, 40);
+  assert.equal(moved.width, 25);
+  assert.equal(moved.height, 15);
+
+  // 2. Mode 'resize-se': +72px (+10%) width and -200px (clamped to min 4%) height
+  const resizedSE = computePointerMoveResizePct({
+    mode: 'resize-se',
+    startElem,
+    startMouseX: 100,
+    startMouseY: 100,
+    clientX: 172,
+    clientY: -100,
+    stageWidth: 720,
+    stageHeight: 405,
+    enableSnap: false,
+    minSizePct: 4,
+  });
+  assert.equal(resizedSE.x, 20);
+  assert.equal(resizedSE.y, 30);
+  assert.equal(resizedSE.width, 35);
+  assert.equal(resizedSE.height, 4); // Clamped to min 4%
+
+  // 3. Simulate 60 FPS transient pointermove updates followed by a single commitToHistory on pointerup
+  const baseline = { x: 20, y: 30 };
+  let hist = createInitialHistoryState(baseline);
+  for (let frame = 1; frame <= 60; frame++) {
+    hist = updateTransientHistoryState(hist, {
+      x: Number((20 + frame * 0.25).toFixed(2)),
+      y: Number((30 + frame * 0.15).toFixed(2)),
+    });
+  }
+  // During 60fps pointermove, past stack is still 0 (not flooded)
+  assert.equal(hist.past.length, 0);
+  assert.deepEqual(hist.present, { x: 35, y: 39 });
+
+  // On pointerup, commitToHistory records the entire drag as 1 single Undo step
+  hist = commitTransientHistoryState(hist, baseline);
+  assert.equal(hist.past.length, 1);
+  assert.deepEqual(hist.past[0], { x: 20, y: 30 });
+
+  // Undo restores directly to the pre-drag position in 1 step
+  const afterUndo = undoHistoryState(hist);
+  assert.deepEqual(afterUndo.present, { x: 20, y: 30 });
+});
+
+
+
+
+

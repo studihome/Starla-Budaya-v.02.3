@@ -1,3 +1,11 @@
+import {
+  CanvasActionType,
+  CanvasElement,
+  CanvasElementType,
+  CanvasHoverEffect,
+  CanvasShadowPreset,
+} from '../types/canvas';
+
 /**
  * STARLA BUDAYA - Default Static Content & TypeScript Schema (Tahap 1: Zero-Regression Refactoring)
  * Diekstrak secara utuh (100% lossless) dari seluruh slide, teks SVG, aset audio/gambar/video,
@@ -164,6 +172,33 @@ export interface DragDropInteractionConfig {
   statements: DragDropStatementItem[];
 }
 
+export interface ElementOverrideConfig {
+  xDeltaPct: number;
+  yDeltaPct: number;
+  widthPct?: number;
+  heightPct?: number;
+  hidden?: boolean;
+  locked?: boolean;
+  zIndex?: number;
+  customText?: string;
+  customImage?: string;
+  customAudio?: string;
+}
+
+export type {
+  CanvasActionType,
+  CanvasElement,
+  CanvasElementType,
+  CanvasHoverEffect,
+  CanvasShadowPreset,
+};
+
+export type CanvasElementStyle = CanvasElement['style'];
+
+export type CanvasElementAction = CanvasElement['action'];
+
+export type CanvasElementItem = CanvasElement;
+
 export interface SlideContentItem {
   id: string;
   slideNumber: number;
@@ -181,6 +216,9 @@ export interface SlideContentItem {
   videos: SlideVideoRef[];
   quizQuestion: QuizQuestionItem | null;
   hidden?: boolean;
+  elementOverrides?: Record<string, ElementOverrideConfig>;
+  hiddenElementIds?: string[];
+  canvasElements?: CanvasElementItem[];
 }
 
 export interface StorylineVariableConfig {

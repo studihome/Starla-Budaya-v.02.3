@@ -11,6 +11,9 @@ import {
   ContentSchema,
   SlideContentItem,
   QuizQuestionItem,
+  ElementOverrideConfig,
+  CanvasElementItem,
+  CanvasElementType,
   defaultContent,
 } from '../data/defaultContent';
 import {
@@ -20,6 +23,27 @@ import {
   applyQuizQuestionPatch,
   syncContentToLiveDom,
 } from '../utils/contentRuntimeBridge';
+import {
+  applyElementOverridePatch,
+  applyHideNativeElement,
+  applyRestoreNativeElement,
+  applyAddCanvasElement,
+  applyUpdateCanvasElement,
+  applyDeleteCanvasElement,
+  applyDuplicateCanvasElement,
+  applyReorderCanvasElementLayer,
+  applyToggleCanvasElementLock,
+  applyResetSingleSlide,
+  createDefaultCanvasElement,
+  HistoryStackState,
+  createInitialHistoryState,
+  pushHistoryState,
+  undoHistoryState,
+  redoHistoryState,
+  updateTransientHistoryState,
+  commitTransientHistoryState,
+} from '../features/canvas/canvasMath';
+import { duplicateSlideItem } from '../features/admin/adminHelpers';
 import {
   getSupabaseEnvConfig,
   isSupabaseConfigured,
@@ -42,6 +66,20 @@ export interface ContentContextValue {
   storageSource: 'supabase' | 'localStorage' | 'default';
   isSyncing: boolean;
   lastSyncError: string | null;
+  isCanvasEditMode: boolean;
+  setIsCanvasEditMode: (enabled: boolean) => void;
+  isGridSnapEnabled: boolean;
+  setIsGridSnapEnabled: (enabled: boolean) => void;
+  selectedCanvasItemId: string | null;
+  setSelectedCanvasItemId: (id: string | null) => void;
+  activeCanvasSlideId: string;
+  setActiveCanvasSlideId: (slideId: string) => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  undoCount: number;
+  redoCount: number;
+  undoContent: () => void;
+  redoContent: () => void;
   updateContent: (updater: ContentUpdater) => void;
   updateSlideContent: (
     slideId: string,
@@ -54,6 +92,46 @@ export interface ContentContextValue {
   updateSvgText: (commandSetId: string, lines: string[]) => void;
   updateAudioUrl: (assetId: number, url: string) => void;
   updateImageUrl: (assetId: number, url: string) => void;
+  updateElementOverride: (
+    slideId: string,
+    elementId: string,
+    patch: Partial<ElementOverrideConfig>
+  ) => void;
+  updateElementOverrideTransient: (
+    slideId: string,
+    elementId: string,
+    patch: Partial<ElementOverrideConfig>
+  ) => void;
+  hideNativeElement: (slideId: string, elementId: string) => void;
+  restoreNativeElement: (slideId: string, elementId: string) => void;
+  addCanvasElement: (
+    slideId: string,
+    elementInput: Partial<CanvasElementItem> & { type: CanvasElementType }
+  ) => CanvasElementItem;
+  updateCanvasElement: (
+    slideId: string,
+    elementId: string,
+    patch: Partial<CanvasElementItem>
+  ) => void;
+  updateElementTransient: (
+    slideId: string,
+    elementId: string,
+    patch: Partial<CanvasElementItem>
+  ) => void;
+  commitToHistory: () => void;
+  deleteCanvasElement: (slideId: string, elementId: string) => void;
+  duplicateCanvasElement: (
+    slideId: string,
+    elementId: string
+  ) => CanvasElementItem | null;
+  reorderCanvasElementLayer: (
+    slideId: string,
+    elementId: string,
+    direction: 'forward' | 'backward'
+  ) => void;
+  toggleCanvasElementLock: (slideId: string, elementId: string) => void;
+  resetSlideContent: (slideId: string) => void;
+  duplicateSlide: (slideId: string) => string | null;
   saveContentToCloud: (
     newContent?: ContentSchema | Partial<ContentSchema>
   ) => Promise<SaveContentResult>;
@@ -71,12 +149,41 @@ export const ContentContext = createContext<ContentContextValue>({
   storageSource: 'default',
   isSyncing: false,
   lastSyncError: null,
+  isCanvasEditMode: false,
+  setIsCanvasEditMode: () => {},
+  isGridSnapEnabled: true,
+  setIsGridSnapEnabled: () => {},
+  selectedCanvasItemId: null,
+  setSelectedCanvasItemId: () => {},
+  activeCanvasSlideId: defaultContent.slideOrder[0] || '5dLAzY4SKGI',
+  setActiveCanvasSlideId: () => {},
+  canUndo: false,
+  canRedo: false,
+  undoCount: 0,
+  redoCount: 0,
+  undoContent: () => {},
+  redoContent: () => {},
   updateContent: () => {},
   updateSlideContent: () => {},
   updateQuizQuestion: () => {},
   updateSvgText: () => {},
   updateAudioUrl: () => {},
   updateImageUrl: () => {},
+  updateElementOverride: () => {},
+  updateElementOverrideTransient: () => {},
+  hideNativeElement: () => {},
+  restoreNativeElement: () => {},
+  addCanvasElement: (_slideId, elementInput) =>
+    createDefaultCanvasElement(elementInput.type, 0, elementInput),
+  updateCanvasElement: () => {},
+  updateElementTransient: () => {},
+  commitToHistory: () => {},
+  deleteCanvasElement: () => {},
+  duplicateCanvasElement: () => null,
+  reorderCanvasElementLayer: () => {},
+  toggleCanvasElementLock: () => {},
+  resetSlideContent: () => {},
+  duplicateSlide: () => null,
   saveContentToCloud: async (newContent) => ({
     success: true,
     source: 'localStorage',
@@ -112,11 +219,15 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
   // Guardrail 2: Wajib gunakan pola Fallback `const activeContent = supabaseContent ?? defaultContent;`
   const activeContent = supabaseContent ?? defaultContent;
 
-  const [content, setContent] = useState<ContentSchema>(() => {
-    if (initialSupabaseContent) return initialSupabaseContent;
-    const localBackup = loadContentFromLocalStorage();
-    return localBackup ?? activeContent;
+  const [historyState, setHistoryState] = useState<
+    HistoryStackState<ContentSchema>
+  >(() => {
+    const initial =
+      initialSupabaseContent ?? loadContentFromLocalStorage() ?? activeContent;
+    return createInitialHistoryState(initial);
   });
+
+  const content = historyState.present;
 
   const [storageSource, setStorageSource] = useState<
     'supabase' | 'localStorage' | 'default'
@@ -127,9 +238,94 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
 
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
+  const [isCanvasEditMode, setIsCanvasEditMode] = useState<boolean>(false);
+  const [isGridSnapEnabled, setIsGridSnapEnabled] = useState<boolean>(true);
+  const [selectedCanvasItemId, setSelectedCanvasItemId] = useState<
+    string | null
+  >(null);
+  const [activeCanvasSlideId, setActiveCanvasSlideId] = useState<string>(
+    () => defaultContent.slideOrder[0] || '5dLAzY4SKGI'
+  );
 
   const contentRef = useRef<ContentSchema>(content);
   contentRef.current = content;
+
+  // Menyimpan snapshot awal sebelum drag/resize 60fps dimulai agar `commitToHistory()` menyimpan 1 langkah Undo utuh
+  const transientBaselineRef = useRef<ContentSchema | null>(null);
+
+  const commitContentChange = useCallback(
+    (
+      nextResolver: (prev: ContentSchema) => ContentSchema,
+      recordHistory = true
+    ) => {
+      setHistoryState((prevHist) => {
+        const next = nextResolver(prevHist.present);
+        if (next === prevHist.present) return prevHist;
+        transientBaselineRef.current = null;
+        saveContentToLocalStorage(next);
+        syncContentToLiveDom(next);
+        contentRef.current = next;
+        if (!recordHistory) {
+          return {
+            ...prevHist,
+            present: next,
+          };
+        }
+        return pushHistoryState(prevHist, next);
+      });
+    },
+    []
+  );
+
+  const applyTransientChange = useCallback(
+    (nextResolver: (prev: ContentSchema) => ContentSchema) => {
+      setHistoryState((prevHist) => {
+        const next = nextResolver(prevHist.present);
+        if (next === prevHist.present) return prevHist;
+        if (!transientBaselineRef.current) {
+          transientBaselineRef.current = prevHist.present;
+        }
+        contentRef.current = next;
+        return updateTransientHistoryState(prevHist, next);
+      });
+    },
+    []
+  );
+
+  const commitToHistory = useCallback(() => {
+    setHistoryState((prevHist) => {
+      const baseline = transientBaselineRef.current;
+      transientBaselineRef.current = null;
+      if (!baseline || baseline === prevHist.present) {
+        return prevHist;
+      }
+      saveContentToLocalStorage(prevHist.present);
+      syncContentToLiveDom(prevHist.present);
+      return commitTransientHistoryState(prevHist, baseline);
+    });
+  }, []);
+
+  const undoContent = useCallback(() => {
+    setHistoryState((prevHist) => {
+      if (prevHist.past.length === 0) return prevHist;
+      const nextHist = undoHistoryState(prevHist);
+      saveContentToLocalStorage(nextHist.present);
+      syncContentToLiveDom(nextHist.present);
+      contentRef.current = nextHist.present;
+      return nextHist;
+    });
+  }, []);
+
+  const redoContent = useCallback(() => {
+    setHistoryState((prevHist) => {
+      if (prevHist.future.length === 0) return prevHist;
+      const nextHist = redoHistoryState(prevHist);
+      saveContentToLocalStorage(nextHist.present);
+      syncContentToLiveDom(nextHist.present);
+      contentRef.current = nextHist.present;
+      return nextHist;
+    });
+  }, []);
 
   const refreshContentFromCloud =
     useCallback(async (): Promise<FetchContentResult> => {
@@ -139,14 +335,16 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
         if (result.supabaseContent) {
           setSupabaseContent(result.supabaseContent);
         }
-        setContent(result.content);
+        setHistoryState(createInitialHistoryState(result.content));
+        contentRef.current = result.content;
         setStorageSource(result.source);
         setLastSyncError(result.error ?? null);
         syncContentToLiveDom(result.content);
         return result;
       } catch (err) {
         const fallback = loadContentFromLocalStorage() ?? defaultContent;
-        setContent(fallback);
+        setHistoryState(createInitialHistoryState(fallback));
+        contentRef.current = fallback;
         setStorageSource(
           loadContentFromLocalStorage() ? 'localStorage' : 'default'
         );
@@ -166,7 +364,8 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
   useEffect(() => {
     if (initialSupabaseContent) {
       setSupabaseContent(initialSupabaseContent);
-      setContent(initialSupabaseContent);
+      setHistoryState(createInitialHistoryState(initialSupabaseContent));
+      contentRef.current = initialSupabaseContent;
       setStorageSource('supabase');
       syncContentToLiveDom(initialSupabaseContent);
       return;
@@ -174,104 +373,255 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
     void refreshContentFromCloud();
   }, [initialSupabaseContent, refreshContentFromCloud]);
 
-  const updateContent = useCallback((updater: ContentUpdater) => {
-    setContent((prev) => {
-      const next = resolveUpdatedContent(prev, updater);
-      saveContentToLocalStorage(next);
-      syncContentToLiveDom(next);
-      return next;
-    });
-  }, []);
+  const updateContent = useCallback(
+    (updater: ContentUpdater) => {
+      commitContentChange((prev) => resolveUpdatedContent(prev, updater));
+    },
+    [commitContentChange]
+  );
 
   const updateSlideContent = useCallback(
     (slideId: string, patch: Partial<SlideContentItem>) => {
-      setContent((prev) => {
-        const next = applySlidePatch(prev, slideId, patch);
-        saveContentToLocalStorage(next);
-        syncContentToLiveDom(next);
-        return next;
-      });
+      commitContentChange((prev) => applySlidePatch(prev, slideId, patch));
     },
-    []
+    [commitContentChange]
   );
 
   const updateQuizQuestion = useCallback(
     (slideId: string, patch: Partial<QuizQuestionItem>) => {
-      setContent((prev) => {
-        const next = applyQuizQuestionPatch(prev, slideId, patch);
-        saveContentToLocalStorage(next);
-        syncContentToLiveDom(next);
-        return next;
-      });
+      commitContentChange((prev) =>
+        applyQuizQuestionPatch(prev, slideId, patch)
+      );
     },
-    []
+    [commitContentChange]
   );
 
-  const updateSvgText = useCallback((commandSetId: string, lines: string[]) => {
-    setContent((prev) => {
-      const existing = prev.svgTextCommandSets[commandSetId];
-      const next: ContentSchema = {
-        ...prev,
-        svgTextCommandSets: {
-          ...prev.svgTextCommandSets,
-          [commandSetId]: {
-            commandSetId,
-            index: existing
-              ? existing.index
-              : Number(commandSetId.replace('commandset-', '')) || 0,
-            lines: [...lines],
+  const updateSvgText = useCallback(
+    (commandSetId: string, lines: string[]) => {
+      commitContentChange((prev) => {
+        const existing = prev.svgTextCommandSets[commandSetId];
+        return {
+          ...prev,
+          svgTextCommandSets: {
+            ...prev.svgTextCommandSets,
+            [commandSetId]: {
+              commandSetId,
+              index: existing
+                ? existing.index
+                : Number(commandSetId.replace('commandset-', '')) || 0,
+              lines: [...lines],
+            },
           },
-        },
-      };
-      saveContentToLocalStorage(next);
-      syncContentToLiveDom(next);
-      return next;
-    });
-  }, []);
+        };
+      });
+    },
+    [commitContentChange]
+  );
 
-  const updateAudioUrl = useCallback((assetId: number, url: string) => {
-    setContent((prev) => {
-      const existing = prev.audioCatalog[assetId];
-      const next: ContentSchema = {
-        ...prev,
-        audioCatalog: {
-          ...prev.audioCatalog,
-          [assetId]: {
-            assetId,
-            url,
-            durationMs: existing ? existing.durationMs : 0,
-            fileSize: existing ? existing.fileSize : 0,
+  const updateAudioUrl = useCallback(
+    (assetId: number, url: string) => {
+      commitContentChange((prev) => {
+        const existing = prev.audioCatalog[assetId];
+        return {
+          ...prev,
+          audioCatalog: {
+            ...prev.audioCatalog,
+            [assetId]: {
+              assetId,
+              url,
+              durationMs: existing ? existing.durationMs : 0,
+              fileSize: existing ? existing.fileSize : 0,
+            },
           },
-        },
-      };
-      saveContentToLocalStorage(next);
-      syncContentToLiveDom(next);
-      return next;
-    });
-  }, []);
+        };
+      });
+    },
+    [commitContentChange]
+  );
 
-  const updateImageUrl = useCallback((assetId: number, url: string) => {
-    setContent((prev) => {
-      const existing = prev.imageCatalog[assetId];
-      const next: ContentSchema = {
-        ...prev,
-        imageCatalog: {
-          ...prev.imageCatalog,
-          [assetId]: {
-            assetId,
-            url,
-            imageType: existing ? existing.imageType : 'normal',
-            width: existing ? existing.width : 0,
-            height: existing ? existing.height : 0,
-            fileSize: existing ? existing.fileSize : 0,
+  const updateImageUrl = useCallback(
+    (assetId: number, url: string) => {
+      commitContentChange((prev) => {
+        const existing = prev.imageCatalog[assetId];
+        return {
+          ...prev,
+          imageCatalog: {
+            ...prev.imageCatalog,
+            [assetId]: {
+              assetId,
+              url,
+              imageType: existing ? existing.imageType : 'normal',
+              width: existing ? existing.width : 0,
+              height: existing ? existing.height : 0,
+              fileSize: existing ? existing.fileSize : 0,
+            },
           },
-        },
-      };
-      saveContentToLocalStorage(next);
-      syncContentToLiveDom(next);
-      return next;
-    });
-  }, []);
+        };
+      });
+    },
+    [commitContentChange]
+  );
+
+  const updateElementOverride = useCallback(
+    (
+      slideId: string,
+      elementId: string,
+      patch: Partial<ElementOverrideConfig>
+    ) => {
+      commitContentChange((prev) =>
+        applyElementOverridePatch(prev, slideId, elementId, patch)
+      );
+    },
+    [commitContentChange]
+  );
+
+  const updateElementOverrideTransient = useCallback(
+    (
+      slideId: string,
+      elementId: string,
+      patch: Partial<ElementOverrideConfig>
+    ) => {
+      applyTransientChange((prev) =>
+        applyElementOverridePatch(prev, slideId, elementId, patch)
+      );
+    },
+    [applyTransientChange]
+  );
+
+  const hideNativeElement = useCallback(
+    (slideId: string, elementId: string) => {
+      commitContentChange((prev) =>
+        applyHideNativeElement(prev, slideId, elementId)
+      );
+      setSelectedCanvasItemId((curr) => (curr === elementId ? null : curr));
+    },
+    [commitContentChange]
+  );
+
+  const restoreNativeElement = useCallback(
+    (slideId: string, elementId: string) => {
+      commitContentChange((prev) =>
+        applyRestoreNativeElement(prev, slideId, elementId)
+      );
+    },
+    [commitContentChange]
+  );
+
+  const addCanvasElement = useCallback(
+    (
+      slideId: string,
+      elementInput: Partial<CanvasElementItem> & { type: CanvasElementType }
+    ): CanvasElementItem => {
+      const { nextSchema, createdElement } = applyAddCanvasElement(
+        contentRef.current,
+        slideId,
+        elementInput
+      );
+      commitContentChange(() => nextSchema);
+      setSelectedCanvasItemId(createdElement.id);
+      return createdElement;
+    },
+    [commitContentChange]
+  );
+
+  const updateCanvasElement = useCallback(
+    (
+      slideId: string,
+      elementId: string,
+      patch: Partial<CanvasElementItem>
+    ) => {
+      commitContentChange((prev) =>
+        applyUpdateCanvasElement(prev, slideId, elementId, patch)
+      );
+    },
+    [commitContentChange]
+  );
+
+  const updateElementTransient = useCallback(
+    (
+      slideId: string,
+      elementId: string,
+      patch: Partial<CanvasElementItem>
+    ) => {
+      applyTransientChange((prev) =>
+        applyUpdateCanvasElement(prev, slideId, elementId, patch)
+      );
+    },
+    [applyTransientChange]
+  );
+
+  const deleteCanvasElement = useCallback(
+    (slideId: string, elementId: string) => {
+      commitContentChange((prev) =>
+        applyDeleteCanvasElement(prev, slideId, elementId)
+      );
+      setSelectedCanvasItemId((curr) => (curr === elementId ? null : curr));
+    },
+    [commitContentChange]
+  );
+
+  const duplicateCanvasElement = useCallback(
+    (slideId: string, elementId: string): CanvasElementItem | null => {
+      const { nextSchema, duplicatedElement } = applyDuplicateCanvasElement(
+        contentRef.current,
+        slideId,
+        elementId
+      );
+      if (duplicatedElement) {
+        commitContentChange(() => nextSchema);
+        setSelectedCanvasItemId(duplicatedElement.id);
+      }
+      return duplicatedElement;
+    },
+    [commitContentChange]
+  );
+
+  const reorderCanvasElementLayer = useCallback(
+    (
+      slideId: string,
+      elementId: string,
+      direction: 'forward' | 'backward'
+    ) => {
+      commitContentChange((prev) =>
+        applyReorderCanvasElementLayer(prev, slideId, elementId, direction)
+      );
+    },
+    [commitContentChange]
+  );
+
+  const toggleCanvasElementLock = useCallback(
+    (slideId: string, elementId: string) => {
+      commitContentChange((prev) =>
+        applyToggleCanvasElementLock(prev, slideId, elementId)
+      );
+    },
+    [commitContentChange]
+  );
+
+  const resetSlideContent = useCallback(
+    (slideId: string) => {
+      commitContentChange((prev) =>
+        applyResetSingleSlide(prev, slideId, defaultContent.slides[slideId])
+      );
+      setSelectedCanvasItemId(null);
+    },
+    [commitContentChange]
+  );
+
+  const duplicateSlide = useCallback(
+    (slideId: string): string | null => {
+      const { nextSchema, duplicatedSlideId } = duplicateSlideItem(
+        contentRef.current,
+        slideId
+      );
+      if (duplicatedSlideId) {
+        commitContentChange(() => nextSchema);
+        setActiveCanvasSlideId(duplicatedSlideId);
+      }
+      return duplicatedSlideId;
+    },
+    [commitContentChange]
+  );
 
   /**
    * Menyimpan perubahan konten ke Supabase (`app_contents`, `slug = 'main'`)
@@ -287,8 +637,7 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
           ? resolveUpdatedContent(contentRef.current, newContent)
           : contentRef.current;
 
-        setContent(resolved);
-        syncContentToLiveDom(resolved);
+        commitContentChange(() => resolved, false);
 
         const result = await saveMainContentToCloud(resolved);
         if (result.source === 'supabase') {
@@ -301,7 +650,7 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
         setIsSyncing(false);
       }
     },
-    []
+    [commitContentChange]
   );
 
   /**
@@ -330,9 +679,11 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
   const resetContent = useCallback(() => {
     clearContentFromLocalStorage();
     setSupabaseContent(null);
-    setContent(defaultContent);
+    setHistoryState(createInitialHistoryState(defaultContent));
+    contentRef.current = defaultContent;
     setStorageSource('default');
     setLastSyncError(null);
+    setSelectedCanvasItemId(null);
     syncContentToLiveDom(defaultContent);
   }, []);
 
@@ -347,12 +698,40 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
       storageSource,
       isSyncing,
       lastSyncError,
+      isCanvasEditMode,
+      setIsCanvasEditMode,
+      isGridSnapEnabled,
+      setIsGridSnapEnabled,
+      selectedCanvasItemId,
+      setSelectedCanvasItemId,
+      activeCanvasSlideId,
+      setActiveCanvasSlideId,
+      canUndo: historyState.past.length > 0,
+      canRedo: historyState.future.length > 0,
+      undoCount: historyState.past.length,
+      redoCount: historyState.future.length,
+      undoContent,
+      redoContent,
       updateContent,
       updateSlideContent,
       updateQuizQuestion,
       updateSvgText,
       updateAudioUrl,
       updateImageUrl,
+      updateElementOverride,
+      updateElementOverrideTransient,
+      hideNativeElement,
+      restoreNativeElement,
+      addCanvasElement,
+      updateCanvasElement,
+      updateElementTransient,
+      commitToHistory,
+      deleteCanvasElement,
+      duplicateCanvasElement,
+      reorderCanvasElementLayer,
+      toggleCanvasElementLock,
+      resetSlideContent,
+      duplicateSlide,
       saveContentToCloud,
       uploadMediaToCloud,
       refreshContentFromCloud,
@@ -363,12 +742,34 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
       storageSource,
       isSyncing,
       lastSyncError,
+      isCanvasEditMode,
+      isGridSnapEnabled,
+      selectedCanvasItemId,
+      activeCanvasSlideId,
+      historyState.past.length,
+      historyState.future.length,
+      undoContent,
+      redoContent,
       updateContent,
       updateSlideContent,
       updateQuizQuestion,
       updateSvgText,
       updateAudioUrl,
       updateImageUrl,
+      updateElementOverride,
+      updateElementOverrideTransient,
+      hideNativeElement,
+      restoreNativeElement,
+      addCanvasElement,
+      updateCanvasElement,
+      updateElementTransient,
+      commitToHistory,
+      deleteCanvasElement,
+      duplicateCanvasElement,
+      reorderCanvasElementLayer,
+      toggleCanvasElementLock,
+      resetSlideContent,
+      duplicateSlide,
       saveContentToCloud,
       uploadMediaToCloud,
       refreshContentFromCloud,
@@ -388,3 +789,4 @@ export function useContent(): ContentContextValue {
 }
 
 export default ContentContext;
+

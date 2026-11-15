@@ -370,6 +370,98 @@ export function transformStorylineProvideData(
 }
 
 /**
+ * Applies `elementOverrides` and `hiddenElementIds` non-destructively to Storyline's
+ * live DOM elements (`#slide-window [data-model-id]`) without altering default elements.
+ */
+export function applySlideElementOverridesToDom(
+  activeContent: ContentSchema
+): void {
+  if (typeof document === 'undefined') return;
+  const slideWindow = document.getElementById('slide-window');
+  if (!slideWindow) return;
+
+  // If using unmodified defaultContent, restore any previously overridden elements and exit
+  if (activeContent === defaultContent) {
+    const overriddenEls = slideWindow.querySelectorAll<HTMLElement>(
+      '[data-starla-overridden="true"]'
+    );
+    overriddenEls.forEach((el) => {
+      el.style.marginLeft = '';
+      el.style.marginTop = '';
+      if (el.dataset.starlaOrigDisplay !== undefined) {
+        el.style.display = el.dataset.starlaOrigDisplay;
+        delete el.dataset.starlaOrigDisplay;
+      }
+      delete el.dataset.starlaOverridden;
+    });
+    return;
+  }
+
+  for (const slide of Object.values(activeContent.slides)) {
+    const overrides = slide.elementOverrides;
+    const hiddenIds = slide.hiddenElementIds || [];
+    if (
+      (!overrides || Object.keys(overrides).length === 0) &&
+      hiddenIds.length === 0
+    ) {
+      continue;
+    }
+
+    const allIds = new Set<string>([
+      ...Object.keys(overrides || {}),
+      ...hiddenIds,
+    ]);
+
+    for (const elementId of allIds) {
+      const ov = overrides?.[elementId];
+      const isHidden = Boolean(ov?.hidden || hiddenIds.includes(elementId));
+      const nodes = slideWindow.querySelectorAll<HTMLElement>(
+        `[data-model-id="${elementId}"]`
+      );
+
+      nodes.forEach((el) => {
+        el.dataset.starlaOverridden = 'true';
+
+        if (isHidden) {
+          if (el.dataset.starlaOrigDisplay === undefined) {
+            el.dataset.starlaOrigDisplay = el.style.display || '';
+          }
+          el.style.display = 'none';
+        } else if (el.dataset.starlaOrigDisplay !== undefined) {
+          el.style.display = el.dataset.starlaOrigDisplay;
+          delete el.dataset.starlaOrigDisplay;
+        }
+
+        if (ov) {
+          el.style.marginLeft =
+            ov.xDeltaPct && ov.xDeltaPct !== 0 ? `${ov.xDeltaPct}%` : '';
+          el.style.marginTop =
+            ov.yDeltaPct && ov.yDeltaPct !== 0 ? `${ov.yDeltaPct}%` : '';
+          if (ov.widthPct !== undefined && ov.widthPct > 0) {
+            el.style.width = `${ov.widthPct}%`;
+          }
+          if (ov.heightPct !== undefined && ov.heightPct > 0) {
+            el.style.height = `${ov.heightPct}%`;
+          }
+          if (ov.customImage) {
+            const imgEl = el.querySelector<HTMLImageElement>('img');
+            if (imgEl && imgEl.src !== ov.customImage) {
+              imgEl.src = ov.customImage;
+            }
+          }
+          if (ov.customText !== undefined) {
+            const tspanEl = el.querySelector('tspan');
+            if (tspanEl && tspanEl.textContent !== ov.customText) {
+              tspanEl.textContent = ov.customText;
+            }
+          }
+        }
+      });
+    }
+  }
+}
+
+/**
  * Synchronizes real-time updates from `ContentContext` to the active DOM
  * without altering any CSS classes, layout geometry, or audio trigger listeners.
  */
@@ -397,10 +489,14 @@ export function syncContentToLiveDom(activeContent: ContentSchema): void {
       accessLabelEl.textContent = activeContent.frontStage.accessButtonLabel;
     }
 
-    // 3. Expose active content to window for player & engine inspection
+    // 3. Apply non-destructive elementOverrides & hiddenElementIds if present
+    applySlideElementOverridesToDom(activeContent);
+
+    // 4. Expose active content to window for player & engine inspection
     const win = window as unknown as Record<string, unknown>;
     win.__STARLA_CONTENT__ = activeContent;
   } catch {
     // Ignore DOM sync errors in non-browser environments
   }
 }
+

@@ -855,3 +855,86 @@ export function parseAndValidateImportedJson(rawJson: string): {
     };
   }
 }
+
+/**
+ * Menduplikasi slide (termasuk seluruh `canvasElements` dengan ID baru, `elementOverrides`, `instructions`, dan `backgroundUrl`)
+ * lalu menyisipkannya tepat setelah slide sumber di dalam `slideOrder`.
+ */
+export function duplicateSlideItem(
+  schema: ContentSchema,
+  sourceSlideId: string
+): { nextSchema: ContentSchema; duplicatedSlideId: string | null } {
+  const source = schema.slides[sourceSlideId];
+  if (!source) {
+    return { nextSchema: schema, duplicatedSlideId: null };
+  }
+
+  const duplicatedSlideId = `slide_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  const clonedCanvasElements = Array.isArray(source.canvasElements)
+    ? source.canvasElements.map((el, idx) => ({
+        ...el,
+        id: `ce_${Date.now().toString(36)}_${idx}_${Math.random().toString(36).slice(2, 5)}`,
+        style: { ...el.style },
+        action: { ...el.action },
+      }))
+    : [];
+
+  const clonedOverrides = source.elementOverrides
+    ? JSON.parse(JSON.stringify(source.elementOverrides))
+    : {};
+
+  const sourceOrderIdx = schema.slideOrder.indexOf(sourceSlideId);
+  const insertIdx =
+    sourceOrderIdx !== -1 ? sourceOrderIdx + 1 : schema.slideOrder.length;
+
+  const nextSlideOrder = [
+    ...schema.slideOrder.slice(0, insertIdx),
+    duplicatedSlideId,
+    ...schema.slideOrder.slice(insertIdx),
+  ];
+
+  const newSlide: SlideContentItem = {
+    ...source,
+    id: duplicatedSlideId,
+    slideNumber: insertIdx + 1,
+    title: `${source.title || 'Slide'} (Salinan)`,
+    lmsId: `Slide${nextSlideOrder.length}`,
+    jsPath: `html5/data/js/${duplicatedSlideId}.js`,
+    instructions: [...(source.instructions || [])],
+    texts: (source.texts || []).map((tb) => ({
+      ...tb,
+      lines: [...tb.lines],
+    })),
+    audios: [...(source.audios || [])],
+    images: [...(source.images || [])],
+    videos: [...(source.videos || [])],
+    hidden: false,
+    elementOverrides: clonedOverrides,
+    hiddenElementIds: [...(source.hiddenElementIds || [])],
+    canvasElements: clonedCanvasElements,
+  };
+
+  const nextSlides: Record<string, SlideContentItem> = {
+    ...schema.slides,
+    [duplicatedSlideId]: newSlide,
+  };
+
+  nextSlideOrder.forEach((id, idx) => {
+    if (nextSlides[id]) {
+      nextSlides[id] = {
+        ...nextSlides[id],
+        slideNumber: idx + 1,
+      };
+    }
+  });
+
+  return {
+    nextSchema: {
+      ...schema,
+      slideOrder: nextSlideOrder,
+      slides: nextSlides,
+    },
+    duplicatedSlideId,
+  };
+}
+
