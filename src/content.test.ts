@@ -1143,3 +1143,196 @@ test('Audit & Smart Classification: Materi Budaya only contains Materi slides, a
     );
   }
 });
+
+test('Smart Logic: 10 Game Anak Garuda Bird Questions, 360° Slide + Image Button Linker, and Last-Slide Refresh Persistence', async () => {
+  const {
+    GARUDA_BIRD_QUESTIONS,
+    GARUDA_DROP_TARGETS,
+    STARLA_BUTTON_PRESETS,
+    getTur360Slides,
+    getSmartSlideMeta,
+  } = await import('./utils/slideExactMeta');
+  const {
+    applyGarudaBirdQuestionPatch,
+    splitStatementIntoBalancedLines,
+    saveLastActiveSlideState,
+    loadLastActiveSlideState,
+    protectStarlaLocalStorage,
+  } = await import('./utils/contentRuntimeBridge');
+  const { addSlideItem } = await import('./features/admin/adminHelpers');
+  const { applyAddCanvasElement } = await import('./features/canvas/canvasMath');
+
+  // 1. Verify all 10 Bird Questions of Game Anak Garuda (Slide 40 - 6G1VrKuOhCw)
+  assert.equal(GARUDA_BIRD_QUESTIONS.length, 10);
+  assert.ok(STARLA_BUTTON_PRESETS.length >= 6);
+  const q1 = GARUDA_BIRD_QUESTIONS[0];
+  assert.equal(q1.birdId, '6XfIWrI4Giy');
+  assert.equal(q1.commandSetId, 'commandset-349');
+  assert.equal(q1.defaultTarget, 'Budaya yang Benar');
+
+  // Patch Bird #1: change statement text, flip targetChoice to 'Budaya yang Salah', and set points to 30
+  const patchedGaruda = applyGarudaBirdQuestionPatch(
+    defaultContent,
+    '6XfIWrI4Giy',
+    {
+      text: 'Menolak bekerja sama dengan teman yang berbeda suku daerah',
+      targetChoice: 'Budaya yang Salah',
+      points: 30,
+    }
+  );
+
+  const lines = splitStatementIntoBalancedLines(
+    'Menolak bekerja sama dengan teman yang berbeda suku daerah',
+    3,
+    26
+  );
+  assert.ok(lines.length >= 2);
+  assert.deepEqual(
+    patchedGaruda.svgTextCommandSets['commandset-349'].lines,
+    lines
+  );
+  assert.equal(
+    patchedGaruda.quizzes.gameAnakGaruda.questionOverrides?.['6XfIWrI4Giy']
+      ?.targetChoice,
+    'Budaya yang Salah'
+  );
+  assert.equal(
+    patchedGaruda.quizzes.gameAnakGaruda.questionOverrides?.['6XfIWrI4Giy']
+      ?.points,
+    30
+  );
+
+  // Verify transformStorylineProvideData patches 6G1VrKuOhCw.js runtime payload with updated targetId & points
+  const rawSlide40Js = fs.readFileSync(
+    path.join(process.cwd(), 'html5/data/js/6G1VrKuOhCw.js'),
+    'utf8'
+  );
+  let rawSlide40Json = '';
+  const fnExtract = new Function('window', rawSlide40Js);
+  fnExtract({
+    globalProvideData: (_kind: string, jsonStr: string) => {
+      rawSlide40Json = jsonStr;
+    },
+  });
+
+  const transformedSlide40Str = transformStorylineProvideData(
+    'slide',
+    rawSlide40Json,
+    patchedGaruda
+  );
+  const transformedSlide40 = JSON.parse(transformedSlide40Str);
+  const bird1Obj = transformedSlide40.slideLayers[0].objects.find(
+    (o: any) => o.id === '6XfIWrI4Giy'
+  );
+  const dragOverEvent = bird1Obj.events.find(
+    (ev: any) => ev.kind === 'ondragover'
+  );
+  const scoringIfAction = dragOverEvent.actions.find(
+    (act: any) =>
+      Array.isArray(act.thenActions) &&
+      act.thenActions.some((ta: any) => ta.variable === '_player.poin')
+  );
+  assert.ok(scoringIfAction);
+  assert.equal(
+    scoringIfAction.condition.statement.statements[0].valueb,
+    GARUDA_DROP_TARGETS.SALAH_ID
+  );
+  const poinAction = scoringIfAction.thenActions.find(
+    (a: any) => a.variable === '_player.poin'
+  );
+  assert.equal(poinAction.value.value, 30);
+
+  // 2. Verify Adding a New 360° Budaya Slide + Attaching an Image Button on Slide 43 (`5iew2M44w24`)
+  const custom360SlideId = 'tur360_custom_borobudur';
+  const { nextSchema: with360Slide } = addSlideItem(defaultContent, {
+    id: custom360SlideId,
+    title: 'Eksplorasi Tur Virtual 360° Candi Borobudur',
+    instructions: ['Tur 360° Candi Borobudur'],
+  });
+  with360Slide.slides[custom360SlideId].webObjectUrl =
+    'https://faryzt.github.io/starla-360/?scene=borobudur';
+  with360Slide.slides[custom360SlideId].customCategory = 'tur360';
+
+  const tur360Slides = getTur360Slides(
+    with360Slide.slideOrder,
+    with360Slide.slides
+  );
+  assert.equal(tur360Slides.length, 2); // Slide 8 + new custom 360 slide
+  const customMeta = getSmartSlideMeta(
+    custom360SlideId,
+    with360Slide.slides[custom360SlideId]
+  );
+  assert.equal(customMeta.category, 'tur360');
+  assert.equal(
+    customMeta.webObjectUrl,
+    'https://faryzt.github.io/starla-360/?scene=borobudur'
+  );
+
+  // Attach an Image Button on Menu Materi Slide 43 (`5iew2M44w24`) linking to `tur360_custom_borobudur`
+  const { nextSchema: withMenuBtn, createdElement } = applyAddCanvasElement(
+    with360Slide,
+    '5iew2M44w24',
+    {
+      type: 'image-button',
+      label: 'Tur 360° Borobudur',
+      imageUrl: STARLA_BUTTON_PRESETS[0].imageUrl,
+      action: {
+        type: 'goto-slide',
+        targetSlideId: custom360SlideId,
+      },
+    }
+  );
+  assert.equal(createdElement.action.type, 'goto-slide');
+  assert.equal(createdElement.action.targetSlideId, custom360SlideId);
+  assert.equal(
+    withMenuBtn.slides['5iew2M44w24'].canvasElements?.[0].imageUrl,
+    'mobile/5dCAlHC5W8Z.png'
+  );
+
+  // 3. Verify Last Active Slide Persistence & Storage.prototype.clear Protection
+  const storeMap = new Map<string, string>();
+  const mockStorage = {
+    get length() {
+      return storeMap.size;
+    },
+    key(idx: number) {
+      return Array.from(storeMap.keys())[idx] ?? null;
+    },
+    getItem(k: string) {
+      return storeMap.has(k) ? storeMap.get(k)! : null;
+    },
+    setItem(k: string, v: string) {
+      storeMap.set(k, String(v));
+    },
+    removeItem(k: string) {
+      storeMap.delete(k);
+    },
+    clear() {
+      storeMap.clear();
+    },
+  };
+  (globalThis as any).window = {
+    localStorage: mockStorage,
+  };
+
+  protectStarlaLocalStorage();
+  saveLastActiveSlideState({
+    slideId: '6FkRXfgJQkY',
+    slideIndex: 38,
+    frontOpened: true,
+    studentName: 'Putu Ayu',
+    studentSchool: 'SDN 1 Denpasar',
+  });
+
+  // Simulate Storyline's wipeResumeStorage calling window.localStorage.clear() on refresh/beforeunload
+  mockStorage.setItem('storyline_temp_suspend', 'xyz');
+  mockStorage.clear();
+
+  assert.equal(mockStorage.getItem('storyline_temp_suspend'), null);
+  const restoredSlide = loadLastActiveSlideState();
+  assert.ok(restoredSlide);
+  assert.equal(restoredSlide?.slideId, '6FkRXfgJQkY');
+  assert.equal(restoredSlide?.frontOpened, true);
+  assert.equal(restoredSlide?.studentName, 'Putu Ayu');
+});
+

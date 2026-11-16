@@ -52,10 +52,17 @@ import {
   defaultContent,
   type ContentSchema,
   type CanvasElement,
+  type CanvasActionType,
 } from './data/defaultContent';
 import {
   applySlidePatch,
   applyQuizQuestionPatch,
+  applyGarudaBirdQuestionPatch,
+  navigateStorylineToSlide,
+  loadLastActiveSlideState,
+  saveLastActiveSlideState,
+  loadPersistentAdminExtraState,
+  savePersistentAdminExtraState,
 } from './utils/contentRuntimeBridge';
 import {
   addSlideItem,
@@ -77,7 +84,10 @@ import {
 import {
   getSmartSlideMeta,
   getMateriBudayaSlides,
+  getTur360Slides,
   loadExactSlideStageData,
+  GARUDA_BIRD_QUESTIONS,
+  STARLA_BUTTON_PRESETS,
   type ExactSlideRuntimeData,
   type SlideCategoryType,
 } from './utils/slideExactMeta';
@@ -107,18 +117,26 @@ export interface Tur360EmbedItem {
   id: string;
   embedUrl: string;
   slideId?: string;
+  buttonSlideId?: string;
+  buttonElementId?: string;
 }
 
 export interface GimCustomItem {
   id: string;
+  birdId?: string;
+  textObjId?: string;
+  commandSetId?: string;
+  statementId?: string;
+  slideId: string;
   title: string;
   category: string;
+  topic: string;
   targetChoice: 'Budaya yang Benar' | 'Budaya yang Salah';
   points: number;
   status: BadgeStatus;
   imageUrl: string;
   audioUrl: string;
-  statementId?: string;
+  isGarudaBird?: boolean;
 }
 
 export interface StudentAnalyticsItem {
@@ -160,14 +178,13 @@ export interface AdminDataContextValue {
   navigateToPublicSlide: (slideId: string) => void;
 }
 
-const ADMIN_EXTRA_STORAGE_KEY = 'starla_admin_extra_v2';
-
 const DEFAULT_EXTRA_STATE: AdminExtraState = {
   tur360List: [
     {
       id: '360-01',
       embedUrl: 'https://faryzt.github.io/starla-360/',
       slideId: '5jTlwgcUi8o',
+      buttonSlideId: '5iew2M44w24',
     },
   ],
   analyticsList: [
@@ -177,9 +194,9 @@ const DEFAULT_EXTRA_STATE: AdminExtraState = {
       school: 'SDN 1 Denpasar',
       completedModules: 17,
       quizScore: 100,
-      garudaPoints: 20,
+      garudaPoints: 200,
       status: 'Unggulan',
-      avatarUrl: 'story_content/5hv8C0oRfrb.png',
+      avatarUrl: 'mobile/5hv8C0oRfrb.png',
       lastActive: 'Hari ini, 09:40 WITA',
     },
     {
@@ -188,9 +205,9 @@ const DEFAULT_EXTRA_STATE: AdminExtraState = {
       school: 'SDN Menteng 01 Jakarta',
       completedModules: 16,
       quizScore: 90,
-      garudaPoints: 20,
+      garudaPoints: 180,
       status: 'Populer',
-      avatarUrl: 'story_content/5r8KdQdV9SH.png',
+      avatarUrl: 'mobile/5r8KdQdV9SH.png',
       lastActive: 'Hari ini, 08:15 WIB',
     },
     {
@@ -199,9 +216,9 @@ const DEFAULT_EXTRA_STATE: AdminExtraState = {
       school: 'SDN 060812 Medan',
       completedModules: 15,
       quizScore: 90,
-      garudaPoints: 18,
+      garudaPoints: 180,
       status: 'Active',
-      avatarUrl: 'story_content/62oB2J2cBdW.png',
+      avatarUrl: 'mobile/62oB2J2cBdW.png',
       lastActive: 'Kemarin, 14:20 WIB',
     },
     {
@@ -210,9 +227,9 @@ const DEFAULT_EXTRA_STATE: AdminExtraState = {
       school: 'SD Inpres Kotaraja Jayapura',
       completedModules: 14,
       quizScore: 80,
-      garudaPoints: 16,
+      garudaPoints: 160,
       status: 'Active',
-      avatarUrl: 'story_content/5s6NWFwiK9z.png',
+      avatarUrl: 'mobile/5s6NWFwiK9z.png',
       lastActive: 'Kemarin, 11:05 WIT',
     },
     {
@@ -221,9 +238,9 @@ const DEFAULT_EXTRA_STATE: AdminExtraState = {
       school: 'SDN Ungaran 1 Yogyakarta',
       completedModules: 12,
       quizScore: 80,
-      garudaPoints: 14,
+      garudaPoints: 140,
       status: 'Pending',
-      avatarUrl: 'story_content/6Z7ek63QC1F.png',
+      avatarUrl: 'mobile/6Z7ek63QC1F.png',
       lastActive: '2 hari lalu',
     },
   ],
@@ -299,6 +316,8 @@ const STARLA_ADMIN_SCOPED_CSS = `
 }
 `;
 
+let cachedUnlayeredTailwindCss = '';
+
 function syncUnlayeredTailwind(isAdminActive: boolean): void {
   if (typeof document === 'undefined') return;
   let unlayeredEl = document.getElementById(
@@ -323,21 +342,24 @@ function syncUnlayeredTailwind(isAdminActive: boolean): void {
   );
 
   if (twStyle && twStyle.textContent) {
-    if (!unlayeredEl) {
-      unlayeredEl = document.createElement('style');
-      unlayeredEl.id = 'starla-tailwind-unlayered';
-      document.head.appendChild(unlayeredEl);
-    }
-    unlayeredEl.disabled = false;
-    const unlayeredCss = twStyle.textContent
+    cachedUnlayeredTailwindCss = twStyle.textContent
       .replace(/@layer\s+properties\s*;/g, '')
       .replace(/@layer\s+theme\s*,\s*base\s*,\s*components\s*,\s*utilities\s*;/g, '')
       .replace(
         /@layer\s+(theme|base|components|utilities|properties)\s*\{/g,
         '@media all {'
       );
-    if (unlayeredEl.textContent !== unlayeredCss) {
-      unlayeredEl.textContent = unlayeredCss;
+  }
+
+  if (cachedUnlayeredTailwindCss) {
+    if (!unlayeredEl) {
+      unlayeredEl = document.createElement('style');
+      unlayeredEl.id = 'starla-tailwind-unlayered';
+      document.head.appendChild(unlayeredEl);
+    }
+    unlayeredEl.disabled = false;
+    if (unlayeredEl.textContent !== cachedUnlayeredTailwindCss) {
+      unlayeredEl.textContent = cachedUnlayeredTailwindCss;
     }
     if (document.head.lastElementChild !== unlayeredEl) {
       document.head.appendChild(unlayeredEl);
@@ -345,6 +367,12 @@ function syncUnlayeredTailwind(isAdminActive: boolean): void {
   }
 }
 
+/**
+ * Ensures portal root and styles exist.
+ * IMPORTANT ZERO-LAG OPTIMIZATION:
+ * When `isAdminActive === false` (student public view), we DO NOT inject `@tailwindcss/browser@4`
+ * so its global DOM MutationObserver NEVER runs during Storyline 60fps slide animations!
+ */
 function ensureAdminStylesAndPortalRoot(
   isAdminActive = false
 ): HTMLElement | null {
@@ -357,11 +385,11 @@ function ensureAdminStylesAndPortalRoot(
     document.head.appendChild(styleEl);
   }
 
-  if (!document.getElementById('starla-tailwind-runtime')) {
+  if (isAdminActive && !document.getElementById('starla-tailwind-runtime')) {
     const scriptEl = document.createElement('script');
     scriptEl.id = 'starla-tailwind-runtime';
     scriptEl.src = 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4';
-    scriptEl.onload = () => syncUnlayeredTailwind(isAdminActive);
+    scriptEl.onload = () => syncUnlayeredTailwind(true);
     document.head.appendChild(scriptEl);
   }
 
@@ -437,7 +465,6 @@ function renderPathsSvgNode(
     } else if (k === 'flood-opacity') {
       props.floodOpacity = v;
     } else if (Tag === 'tspan' && k === 'x' && typeof v === 'string') {
-      // Use the starting X coordinate of the line so fallback browser font renders cleanly without glyph overlap
       props.x = v.trim().split(/\s+/)[0] || '0';
     } else if (typeof v === 'string' || typeof v === 'number') {
       props[k] = v;
@@ -505,7 +532,7 @@ const ExactSlideStageCanvas: React.FC<{
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    loadExactSlideStageData(slideId).then((res) => {
+    loadExactSlideStageData(slideId, slideData).then((res) => {
       if (!cancelled) {
         setRuntimeSlide(res);
         setLoading(false);
@@ -514,7 +541,7 @@ const ExactSlideStageCanvas: React.FC<{
     return () => {
       cancelled = true;
     };
-  }, [slideId]);
+  }, [slideId, slideData]);
 
   const effectiveBgUrl =
     slideData?.backgroundUrl ||
@@ -523,6 +550,7 @@ const ExactSlideStageCanvas: React.FC<{
 
   const customElements = slideData?.canvasElements || [];
   const elementOverrides = slideData?.elementOverrides || {};
+  const hiddenElementIds = slideData?.hiddenElementIds || [];
 
   return (
     <div
@@ -543,7 +571,9 @@ const ExactSlideStageCanvas: React.FC<{
       {runtimeSlide &&
         runtimeSlide.objects.map((obj) => {
           const override = elementOverrides[obj.id];
-          if (override?.hidden) return null;
+          if (override?.hidden || hiddenElementIds.includes(obj.id)) {
+            return null;
+          }
 
           const leftPct = (obj.xPos / 1280) * 100 + (override?.xDeltaPct || 0);
           const topPct = (obj.yPos / 720) * 100 + (override?.yDeltaPct || 0);
@@ -582,10 +612,15 @@ const ExactSlideStageCanvas: React.FC<{
                 />
               )}
 
-              {/* WebObject 360° Budaya Embed (Slide 8) */}
+              {/* WebObject 360° Budaya Embed (Slide 8 or Custom 360 Slide) */}
               {obj.kind === 'webobject' && (
                 <iframe
-                  src={tur360Url || obj.webUrl || 'https://faryzt.github.io/starla-360/'}
+                  src={
+                    slideData?.webObjectUrl ||
+                    obj.webUrl ||
+                    tur360Url ||
+                    'https://faryzt.github.io/starla-360/'
+                  }
                   title="360 Budaya Embed"
                   className="w-full h-full border-0 pointer-events-auto"
                 />
@@ -637,7 +672,7 @@ const ExactSlideStageCanvas: React.FC<{
           );
         })}
 
-      {/* Fallback for newly created custom admin slides that don't have a .js file in html5/data/js */}
+      {/* Fallback for newly created custom Materi slides that don't have a .js file in html5/data/js */}
       {!loading && !runtimeSlide && slideData && (
         <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-gradient-to-br from-[#102372]/90 via-[#1E3A8A]/85 to-[#0F172A]/90 text-white">
           <div className="max-w-2xl bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-xl">
@@ -657,6 +692,8 @@ const ExactSlideStageCanvas: React.FC<{
       {/* 3. CUSTOM INTERACTIVE CANVAS ELEMENTS ADDED BY ADMIN (DRAGGABLE 60FPS) */}
       {customElements.map((el) => {
         const isSelected = selectedCustomElId === el.id;
+        const isImageOnly =
+          Boolean(el.imageUrl) && el.style?.textPosition === 'hidden';
         return (
           <div
             key={el.id}
@@ -670,13 +707,17 @@ const ExactSlideStageCanvas: React.FC<{
               top: `${el.y}%`,
               width: `${el.width}%`,
               height: `${el.height}%`,
-              backgroundColor: el.style?.backgroundColor || '#2563EB',
+              backgroundColor: isImageOnly
+                ? 'transparent'
+                : el.style?.backgroundColor || '#2563EB',
               color: el.style?.textColor || '#FFFFFF',
               borderRadius: `${el.style?.borderRadius ?? 12}px`,
               fontSize: `${el.style?.fontSize ?? 14}px`,
               zIndex: 50,
             }}
-            className={`absolute flex items-center justify-center gap-2 px-3 py-1.5 font-bold shadow-lg cursor-move transition-shadow ${
+            className={`absolute flex items-center justify-center gap-2 ${
+              isImageOnly ? 'p-0' : 'px-3 py-1.5 shadow-lg'
+            } font-bold cursor-move transition-shadow ${
               isSelected
                 ? 'ring-2 ring-white outline outline-2 outline-blue-600'
                 : 'hover:ring-2 hover:ring-blue-300'
@@ -686,10 +727,16 @@ const ExactSlideStageCanvas: React.FC<{
               <img
                 src={el.imageUrl}
                 alt={el.label}
-                className="w-5 h-5 rounded object-cover shrink-0 pointer-events-none"
+                className={`${
+                  isImageOnly
+                    ? 'w-full h-full object-contain'
+                    : 'w-6 h-6 rounded object-cover shrink-0'
+                } pointer-events-none`}
               />
             )}
-            <span className="truncate pointer-events-none">{el.label}</span>
+            {!isImageOnly && (
+              <span className="truncate pointer-events-none">{el.label}</span>
+            )}
             {isSelected && (
               <button
                 type="button"
@@ -721,6 +768,8 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   const {
     content: activeContent,
     updateContent,
+    updateElementTransient,
+    commitToHistory,
     saveToCloud,
     resetContent: resetToDefault,
     isSaving,
@@ -737,12 +786,30 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showingCount, setShowingCount] = useState<number>(20);
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
+  const [gimFilter, setGimFilter] = useState<'ALL' | 'GARUDA' | 'TEBAK'>('ALL');
 
-  // Slide navigation state synced with public player & Desain Slide
-  const [activeSlideIndex, setActiveSlideIndexState] = useState<number>(0);
-  const [activeDesignSlideId, setActiveDesignSlideId] = useState<string>(
-    () => activeContent.slideOrder[2] || activeContent.slideOrder[0] || '5dLAzY4SKGI'
-  );
+  // Slide navigation state synced with last saved session & public player
+  const [activeSlideIndex, setActiveSlideIndexState] = useState<number>(() => {
+    const saved = loadLastActiveSlideState();
+    if (saved && saved.slideId) {
+      const idx = activeContent.slideOrder.indexOf(saved.slideId);
+      if (idx >= 0) return idx;
+    }
+    return 0;
+  });
+
+  const [activeDesignSlideId, setActiveDesignSlideId] = useState<string>(() => {
+    const saved = loadLastActiveSlideState();
+    if (saved && saved.slideId && activeContent.slides[saved.slideId]) {
+      return saved.slideId;
+    }
+    return (
+      activeContent.slideOrder[2] ||
+      activeContent.slideOrder[0] ||
+      '5dLAzY4SKGI'
+    );
+  });
+
   const [designPreviewMode, setDesignPreviewMode] = useState<
     'exact-stage' | 'live-storyline'
   >('exact-stage');
@@ -750,56 +817,62 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   // 360° Budaya live preview state
   const [preview360Url, setPreview360Url] = useState<string | null>(null);
 
-  // Extra state persisted in localStorage
+  // Extra state persisted in refresh-proof storage
   const [extraState, setExtraState] = useState<AdminExtraState>(() => {
-    if (typeof window === 'undefined') return DEFAULT_EXTRA_STATE;
-    try {
-      const raw = window.localStorage.getItem(ADMIN_EXTRA_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        // Migrate legacy tur360List items to clean { id, embedUrl, slideId }
-        const migrated360: Tur360EmbedItem[] = Array.isArray(parsed.tur360List)
-          ? parsed.tur360List.map((item: any, idx: number) => ({
-              id: item.id || `360-0${idx + 1}`,
-              embedUrl:
-                item.embedUrl ||
-                item.url ||
-                activeContent.appMeta.canonicalUrl ||
-                'https://faryzt.github.io/starla-360/',
-              slideId: item.slideId || '5jTlwgcUi8o',
-            }))
-          : DEFAULT_EXTRA_STATE.tur360List;
-        return {
-          ...DEFAULT_EXTRA_STATE,
-          ...parsed,
-          tur360List:
-            migrated360.length > 0
-              ? migrated360
-              : DEFAULT_EXTRA_STATE.tur360List,
-        };
-      }
-    } catch {
-      // ignore storage errors
+    const parsed = loadPersistentAdminExtraState<any>();
+    if (parsed && typeof parsed === 'object') {
+      const migrated360: Tur360EmbedItem[] = Array.isArray(parsed.tur360List)
+        ? parsed.tur360List.map((item: any, idx: number) => ({
+            id: item.id || `360-0${idx + 1}`,
+            embedUrl:
+              item.embedUrl ||
+              item.url ||
+              activeContent.appMeta.canonicalUrl ||
+              'https://faryzt.github.io/starla-360/',
+            slideId: item.slideId || '5jTlwgcUi8o',
+            buttonSlideId: item.buttonSlideId || '5iew2M44w24',
+            buttonElementId: item.buttonElementId,
+          }))
+        : DEFAULT_EXTRA_STATE.tur360List;
+      return {
+        ...DEFAULT_EXTRA_STATE,
+        ...parsed,
+        tur360List:
+          migrated360.length > 0
+            ? migrated360
+            : DEFAULT_EXTRA_STATE.tur360List,
+      };
     }
     return DEFAULT_EXTRA_STATE;
   });
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(
-        ADMIN_EXTRA_STORAGE_KEY,
-        JSON.stringify(extraState)
-      );
-    } catch {
-      // ignore
-    }
+    savePersistentAdminExtraState(extraState);
   }, [extraState]);
+
+  // Listen to public player slide changes for real-time 2-way sync
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPublicSynced = (ev: Event) => {
+      const customEv = ev as CustomEvent<{
+        slideId: string;
+        slideIndex: number;
+      }>;
+      if (customEv.detail?.slideId) {
+        setActiveSlideIndexState(customEv.detail.slideIndex);
+        setActiveDesignSlideId(customEv.detail.slideId);
+      }
+    };
+    window.addEventListener('starla:public-slide-synced', onPublicSynced);
+    return () =>
+      window.removeEventListener('starla:public-slide-synced', onPublicSynced);
+  }, []);
 
   // Modal CRUD state
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingBirdId, setEditingBirdId] = useState<string | null>(null);
 
   const [formTitle, setFormTitle] = useState<string>('');
   const [formCategory, setFormCategory] = useState<string>('Bahasa Daerah');
@@ -810,6 +883,19 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   const [formEmbedUrl, setFormEmbedUrl] = useState<string>(
     'https://faryzt.github.io/starla-360/'
   );
+  // Smart 360° Slide + Image Button Auto-Creator fields
+  const [form360CreateButton, setForm360CreateButton] = useState<boolean>(true);
+  const [form360TargetMenuSlideId, setForm360TargetMenuSlideId] =
+    useState<string>('5iew2M44w24');
+  const [form360ButtonLabel, setForm360ButtonLabel] = useState<string>(
+    'Eksplorasi 360° Budaya Baru'
+  );
+  const [form360ButtonImage, setForm360ButtonImage] = useState<string>(
+    'mobile/5dCAlHC5W8Z.png'
+  );
+
+  // Game Anak Garuda & Kuis fields
+  const [formPoints, setFormPoints] = useState<number>(20);
   const [formChoices, setFormChoices] = useState<
     Array<{ id: string; text: string; isCorrect: boolean }>
   >([
@@ -830,7 +916,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
     }, 3200);
   }, []);
 
-  // Dragging state in "Desain Slide"
+  // Dragging state in "Desain Slide" (60FPS transient drag without localStorage lag)
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [selectedCanvasElId, setSelectedCanvasElId] = useState<string | null>(
     null
@@ -861,7 +947,10 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') || (e.altKey && e.key.toLowerCase() === 'a')) {
+      if (
+        (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') ||
+        (e.altKey && e.key.toLowerCase() === 'a')
+      ) {
         e.preventDefault();
         setIsAdminOpen((prev) => !prev);
       }
@@ -885,22 +974,14 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
         setActiveSlideIndexState(idx);
       }
       setActiveDesignSlideId(slideId);
-      if (typeof window !== 'undefined') {
-        try {
-          const w = window as any;
-          if (w.DS && w.DS.windowManager) {
-            w.DS.windowManager.gotoSlide?.(slideId);
-          }
-          window.postMessage(
-            { type: 'STARLA_GOTO_SLIDE', slideId, slideIndex: idx },
-            '*'
-          );
-        } catch {
-          // ignore
-        }
-      }
+      saveLastActiveSlideState({
+        slideId,
+        slideIndex: Math.max(0, idx),
+        frontOpened: true,
+      });
+      navigateStorylineToSlide(slideId, activeContent);
     },
-    [activeContent.slideOrder]
+    [activeContent]
   );
 
   const setActiveSlideIndex = useCallback(
@@ -936,7 +1017,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
           customImg.startsWith('http') ||
           customImg.startsWith('mobile/'))
           ? customImg
-          : meta.backgroundUrl || customImg || 'story_content/5hv8C0oRfrb.png';
+          : meta.backgroundUrl || customImg || 'mobile/5hv8C0oRfrb.png';
       const firstAudio =
         slide.audios[0]?.url ||
         'story_content/6k7JPOlasPL_44100_56_0.mp3';
@@ -966,62 +1047,128 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
     extraState.categoryOverrides,
   ]);
 
-  // 2. 360° Budaya (ONLY Embed URL column as requested: "pada 360 budaya hanya ada kolom tautan embed")
+  // 2. 360° Budaya (ONLY Embed URL column as requested, linked smartly to 360° slides & buttons)
   const tur360Items = useMemo(() => {
-    return extraState.tur360List.map((item, idx) => ({
-      id: item.id,
-      code: `#360-${String(idx + 1).padStart(2, '0')}`,
-      embedUrl: item.embedUrl,
-      slideId: item.slideId || '5jTlwgcUi8o',
-    }));
-  }, [extraState.tur360List]);
+    return extraState.tur360List.map((item, idx) => {
+      const targetSlideId = item.slideId || '5jTlwgcUi8o';
+      const sl = activeContent.slides[targetSlideId];
+      const meta = getSmartSlideMeta(targetSlideId, sl, idx);
+      return {
+        id: item.id,
+        code: `#360-${String(idx + 1).padStart(2, '0')}`,
+        embedUrl: item.embedUrl,
+        slideId: targetSlideId,
+        slideNumber: meta.slideNumber,
+        slideTitle: meta.smartTitle,
+        buttonSlideId: item.buttonSlideId || '5iew2M44w24',
+        buttonElementId: item.buttonElementId,
+      };
+    });
+  }, [extraState.tur360List, activeContent.slides]);
 
-  // 3. Gim Edukasi (Tebak Budaya Slides 4, 5, 6 + Gim Drag & Drop Anak Garuda Statements)
+  // 3. Gim Edukasi: All 10 Real Draggable Bird Questions of Game Anak Garuda (Slide 40) + Custom Garuda Questions + 3 Tebak Budaya (Slides 4, 5, 6)
   const gimItems = useMemo<GimCustomItem[]>(() => {
+    const garudaOverrides =
+      activeContent.quizzes.gameAnakGaruda.questionOverrides || {};
+    const hiddenOnSlide40 =
+      activeContent.slides['6G1VrKuOhCw']?.hiddenElementIds || [];
+
+    // 10 Real Draggable Bird Questions on Slide 40 (`6G1VrKuOhCw`)
+    const nativeGarudaBirds: GimCustomItem[] = GARUDA_BIRD_QUESTIONS.map(
+      (spec) => {
+        const ov = garudaOverrides[spec.birdId];
+        const csLines =
+          activeContent.svgTextCommandSets[spec.commandSetId]?.lines;
+        const resolvedText =
+          ov?.text ||
+          (csLines && csLines.length > 0
+            ? csLines.join(' ').replace(/\s+/g, ' ').trim()
+            : spec.defaultText);
+        const resolvedTarget = ov?.targetChoice || spec.defaultTarget;
+        const resolvedPoints = ov?.points ?? spec.defaultPoints;
+        const isHidden =
+          Boolean(ov?.hidden) || hiddenOnSlide40.includes(spec.birdId);
+        const status: BadgeStatus = isHidden
+          ? 'Inactive'
+          : extraState.statusOverrides[spec.birdId] ||
+            (spec.questionNumber <= 3 ? 'Unggulan' : 'Active');
+
+        return {
+          id: `GARUDA-${String(spec.questionNumber).padStart(2, '0')}`,
+          birdId: spec.birdId,
+          textObjId: spec.textObjId,
+          commandSetId: spec.commandSetId,
+          slideId: '6G1VrKuOhCw',
+          title: resolvedText,
+          category: `Anak Garuda — Soal #${spec.questionNumber} (Slide 40)`,
+          topic: ov?.topic || spec.topic,
+          targetChoice: resolvedTarget,
+          points: resolvedPoints,
+          status,
+          imageUrl: spec.imageUrl,
+          audioUrl: 'story_content/6k7JPOlasPL_44100_56_0.mp3',
+          isGarudaBird: true,
+        };
+      }
+    );
+
+    // Additional custom statements added by Admin (beyond the default 2 summary items)
+    const stmts = activeContent.quizzes.gameAnakGaruda.statements || [];
+    const customGarudaItems: GimCustomItem[] = stmts
+      .filter((st) => st.id !== '6aBc0ef8Fpq' && st.id !== '6l3BVdcEP3S')
+      .map((st, idx) => {
+        const qNum = 10 + idx + 1;
+        const status: BadgeStatus =
+          extraState.statusOverrides[st.id] || 'Active';
+        return {
+          id: `GARUDA-${String(qNum).padStart(2, '0')}`,
+          statementId: st.id,
+          slideId: '6G1VrKuOhCw',
+          title: st.text,
+          category: `Anak Garuda — Soal Tambahan #${qNum} (Slide 40)`,
+          topic: st.topic || 'Sikap Budaya Nusantara',
+          targetChoice: st.targetChoice || 'Budaya yang Benar',
+          points: st.points ?? 20,
+          status,
+          imageUrl: 'mobile/6Q69tvGOis4.gif',
+          audioUrl: 'story_content/6k7JPOlasPL_44100_56_0.mp3',
+          isGarudaBird: true,
+        };
+      });
+
+    // 3 Tebak Budaya Warmup Games on Slides 4, 5, 6
     const warmups: GimCustomItem[] = (
       ['6XQ2Lfxmzw1', '5y0cYcWaZ3N', '5iWbenzMEWM'] as const
     ).map((sId, idx) => {
       const sl = activeContent.slides[sId];
       const meta = getSmartSlideMeta(sId, sl, idx);
+      const status: BadgeStatus =
+        extraState.statusOverrides[sId] || 'Populer';
       return {
-        id: `GIM-TEBAK-${idx + 1}`,
+        id: `TEBAK-0${idx + 1}`,
+        slideId: sId,
         title: meta.smartTitle,
-        category: 'Gim Tebak Gambar (Slide ' + meta.slideNumber + ')',
+        category: `Gim Tebak Gambar (Slide ${meta.slideNumber})`,
+        topic: meta.subTopic,
         targetChoice: 'Budaya yang Benar',
         points: 10,
-        status: 'Unggulan',
+        status,
         imageUrl:
           sl?.images?.[1]?.url ||
           sl?.images?.[0]?.url ||
-          'story_content/5hv8C0oRfrb.png',
+          'mobile/5hv8C0oRfrb.png',
         audioUrl:
           sl?.audios?.[0]?.url ||
           'story_content/6k7JPOlasPL_44100_56_0.mp3',
+        isGarudaBird: false,
       };
     });
 
-    const stmts = activeContent.quizzes.gameAnakGaruda.statements || [];
-    const garudaItems: GimCustomItem[] = stmts.map((st, idx) => {
-      const isPositive = idx % 2 === 0;
-      const status: BadgeStatus =
-        extraState.statusOverrides[st.id] ||
-        (idx < 2 ? 'Unggulan' : 'Active');
-      return {
-        id: `GIM-${String(idx + 1).padStart(2, '0')}`,
-        statementId: st.id,
-        title: st.text,
-        category: 'Drag & Drop Anak Garuda (Slide 40)',
-        targetChoice: isPositive ? 'Budaya yang Benar' : 'Budaya yang Salah',
-        points: 20,
-        status,
-        imageUrl: 'story_content/6Hxt2bPxv63.png',
-        audioUrl: 'story_content/6k7JPOlasPL_44100_56_0.mp3',
-      };
-    });
-
-    return [...warmups, ...garudaItems];
+    return [...nativeGarudaBirds, ...customGarudaItems, ...warmups];
   }, [
     activeContent.slides,
+    activeContent.svgTextCommandSets,
+    activeContent.quizzes.gameAnakGaruda.questionOverrides,
     activeContent.quizzes.gameAnakGaruda.statements,
     extraState.statusOverrides,
   ]);
@@ -1048,7 +1195,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
         imageUrl:
           sl?.images[0]?.url ||
           meta.backgroundUrl ||
-          'story_content/5jk1lv5JqZM.png',
+          'mobile/5jk1lv5JqZM.png',
         audioUrl:
           sl?.audios[0]?.url ||
           'story_content/6k7JPOlasPL_44100_56_0.mp3',
@@ -1060,7 +1207,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
     extraState.statusOverrides,
   ]);
 
-  // 5. All Slides with Smart Names for "Desain Slide"
+  // 5. All Slides with Smart Names for "Desain Slide" & Slide Linker Dropdowns
   const allSlidesWithMeta = useMemo(() => {
     return activeContent.slideOrder.map((sId: string, idx: number) => {
       const sl = activeContent.slides[sId];
@@ -1071,6 +1218,10 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
         meta,
       };
     });
+  }, [activeContent.slideOrder, activeContent.slides]);
+
+  const allTur360Slides = useMemo(() => {
+    return getTur360Slides(activeContent.slideOrder, activeContent.slides);
   }, [activeContent.slideOrder, activeContent.slides]);
 
   // ============================================================================
@@ -1104,13 +1255,27 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   const openAddModal = () => {
     setModalMode('add');
     setEditingId(null);
+    setEditingBirdId(null);
     setFormTitle('');
-    setFormCategory('Bahasa Daerah');
+    setFormCategory(
+      activeTab === 'gim' ? 'Sikap Budaya Nusantara' : 'Bahasa Daerah'
+    );
     setFormDescription('');
     setFormStatus('Active');
-    setFormImageUrl('story_content/5hv8C0oRfrb.png');
+    setFormPoints(20);
+    setFormImageUrl(
+      activeTab === 'gim'
+        ? 'mobile/6Q69tvGOis4.gif'
+        : 'mobile/5hv8C0oRfrb.png'
+    );
     setFormAudioUrl('story_content/6k7JPOlasPL_44100_56_0.mp3');
     setFormEmbedUrl('https://faryzt.github.io/starla-360/');
+    setForm360CreateButton(true);
+    setForm360TargetMenuSlideId('5iew2M44w24');
+    setForm360ButtonLabel(
+      `Tur 360° Budaya #${extraState.tur360List.length + 1}`
+    );
+    setForm360ButtonImage('mobile/5dCAlHC5W8Z.png');
     setFormChoices([
       { id: 'c1', text: 'Pilihan Jawaban A (Benar)', isCorrect: true },
       { id: 'c2', text: 'Pilihan Jawaban B', isCorrect: false },
@@ -1124,6 +1289,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   const openEditModalForMateri = (item: (typeof materiItems)[number]) => {
     setModalMode('edit');
     setEditingId(item.id);
+    setEditingBirdId(null);
     setFormTitle(item.title);
     setFormCategory(item.category);
     setFormDescription(item.description);
@@ -1136,16 +1302,21 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   const openEditModalFor360 = (item: Tur360EmbedItem) => {
     setModalMode('edit');
     setEditingId(item.id);
+    setEditingBirdId(null);
     setFormEmbedUrl(item.embedUrl);
+    setForm360CreateButton(false);
+    setForm360TargetMenuSlideId(item.buttonSlideId || '5iew2M44w24');
     setIsModalOpen(true);
   };
 
   const openEditModalForGim = (item: GimCustomItem) => {
     setModalMode('edit');
-    setEditingId(item.statementId || item.id);
+    setEditingId(item.statementId || item.slideId || item.id);
+    setEditingBirdId(item.birdId || null);
     setFormTitle(item.title);
-    setFormCategory(item.category);
+    setFormCategory(item.topic || item.category);
     setFormTargetGroup(item.targetChoice);
+    setFormPoints(item.points || 20);
     setFormStatus(item.status);
     setFormImageUrl(item.imageUrl);
     setFormAudioUrl(item.audioUrl);
@@ -1155,6 +1326,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   const openEditModalForKuis = (item: (typeof kuisItems)[number]) => {
     setModalMode('edit');
     setEditingId(item.id);
+    setEditingBirdId(null);
     setFormTitle(item.title);
     setFormCategory(item.category);
     setFormStatus(item.status);
@@ -1174,39 +1346,124 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
     e.preventDefault();
 
     if (activeTab === 'tur360') {
-      const cleanedUrl = formEmbedUrl.trim() || 'https://faryzt.github.io/starla-360/';
+      const cleanedUrl =
+        formEmbedUrl.trim() || 'https://faryzt.github.io/starla-360/';
       if (modalMode === 'add') {
+        const nextIndex = extraState.tur360List.length + 1;
+        const custom360SlideId = `tur360_custom_${Date.now().toString(36)}`;
+        let createdBtnId: string | undefined;
+
+        updateContent((prev) => {
+          // 1. Create a dedicated new 360° Budaya Slide in activeContent.slides & slideOrder
+          const { nextSchema } = addSlideItem(prev, {
+            id: custom360SlideId,
+            title:
+              form360ButtonLabel.trim() ||
+              `Eksplorasi Tur Virtual 360° Budaya #${nextIndex}`,
+            instructions: [
+              `Penjelajahan panorama interaktif 360° Budaya Nusantara (${cleanedUrl}).`,
+            ],
+            backgroundUrl: 'mobile/Slide5znCNCeGBCx.jpg',
+          });
+
+          const createdSlide = nextSchema.slides[custom360SlideId];
+          if (createdSlide) {
+            createdSlide.webObjectUrl = cleanedUrl;
+            createdSlide.customCategory = 'tur360';
+          }
+
+          let finalSchema = nextSchema;
+
+          // 2. If "Pasang Tombol Bergambar di Slide" is enabled, automatically add an interactive Image Button on the chosen slide (e.g., Menu Materi Slide 43)
+          if (
+            form360CreateButton &&
+            form360TargetMenuSlideId &&
+            finalSchema.slides[form360TargetMenuSlideId]
+          ) {
+            const existingBtns =
+              finalSchema.slides[form360TargetMenuSlideId].canvasElements || [];
+            const offsetCount = existingBtns.length;
+            const {
+              nextSchema: withBtnSchema,
+              createdElement,
+            } = applyAddCanvasElement(finalSchema, form360TargetMenuSlideId, {
+              type: 'image-button',
+              label:
+                form360ButtonLabel.trim() || `Tur 360° Budaya #${nextIndex}`,
+              imageUrl: form360ButtonImage || 'mobile/5dCAlHC5W8Z.png',
+              x: Math.min(72, 6 + (offsetCount % 3) * 28),
+              y: Math.min(84, 78 - Math.floor(offsetCount / 3) * 14),
+              width: 24,
+              height: 11,
+              style: {
+                backgroundColor: '#152C88',
+                textColor: '#FFFFFF',
+                borderRadius: 14,
+                fontSize: 13,
+                fontWeight: 'bold',
+                textPosition: 'overlay',
+              },
+              action: {
+                type: 'goto-slide',
+                targetSlideId: custom360SlideId,
+              },
+            });
+            createdBtnId = createdElement.id;
+            finalSchema = withBtnSchema;
+          }
+
+          return finalSchema;
+        });
+
         const newItem: Tur360EmbedItem = {
-          id: `360-${String(extraState.tur360List.length + 1).padStart(2, '0')}`,
+          id: `360-${String(nextIndex).padStart(2, '0')}`,
           embedUrl: cleanedUrl,
-          slideId: '5jTlwgcUi8o',
+          slideId: custom360SlideId,
+          buttonSlideId: form360TargetMenuSlideId,
+          buttonElementId: createdBtnId,
         };
         setExtraState((prev) => ({
           ...prev,
-          tur360List: [newItem, ...prev.tur360List],
+          tur360List: [...prev.tur360List, newItem],
         }));
-        updateContent((prev) => ({
-          ...prev,
-          appMeta: {
-            ...prev.appMeta,
-            canonicalUrl: cleanedUrl,
-          },
-        }));
-        showToast('Tautan Embed 360° Budaya berhasil ditambahkan!');
+        showToast(
+          form360CreateButton
+            ? 'Slide 360° baru & Tombol Navigasi Bergambar berhasil dipasang di slide!'
+            : 'Tautan Embed & Slide 360° Budaya baru berhasil ditambahkan!'
+        );
       } else if (editingId) {
+        const targetItem = extraState.tur360List.find(
+          (it) => it.id === editingId
+        );
+        const targetSlideId = targetItem?.slideId || '5jTlwgcUi8o';
+
         setExtraState((prev) => ({
           ...prev,
           tur360List: prev.tur360List.map((it) =>
             it.id === editingId ? { ...it, embedUrl: cleanedUrl } : it
           ),
         }));
-        updateContent((prev) => ({
-          ...prev,
-          appMeta: {
-            ...prev.appMeta,
-            canonicalUrl: cleanedUrl,
-          },
-        }));
+
+        updateContent((prev) => {
+          const nextSlides = { ...prev.slides };
+          if (nextSlides[targetSlideId]) {
+            nextSlides[targetSlideId] = {
+              ...nextSlides[targetSlideId],
+              webObjectUrl: cleanedUrl,
+            };
+          }
+          return {
+            ...prev,
+            slides: nextSlides,
+            appMeta:
+              targetSlideId === '5jTlwgcUi8o'
+                ? {
+                    ...prev.appMeta,
+                    canonicalUrl: cleanedUrl,
+                  }
+                : prev.appMeta,
+          };
+        });
         showToast('Tautan Embed 360° Budaya berhasil diperbarui!');
       }
       setIsModalOpen(false);
@@ -1224,6 +1481,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
           });
           const sl = nextSchema.slides[createdSlideId];
           if (sl) {
+            sl.customCategory = 'materi';
             if (formImageUrl) {
               sl.images = [
                 {
@@ -1326,25 +1584,91 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
       }
     } else if (activeTab === 'gim') {
       if (modalMode === 'add') {
-        updateContent((prev) =>
-          addDragDropStatement(
-            prev,
-            formTitle.trim() || 'Pernyataan Sikap Budaya Baru'
-          )
+        const cleanText =
+          formTitle.trim() || 'Pernyataan Sikap Menghargai Budaya';
+        updateContent((prev) => {
+          const withStmt = addDragDropStatement(prev, cleanText);
+          const stmts = withStmt.quizzes.gameAnakGaruda.statements;
+          const lastStmt = stmts[stmts.length - 1];
+          if (lastStmt) {
+            lastStmt.targetChoice = formTargetGroup;
+            lastStmt.points = Number(formPoints) || 20;
+            lastStmt.topic = formCategory.trim() || 'Sikap Budaya Nusantara';
+          }
+          return { ...withStmt };
+        });
+        showToast(
+          'Soal baru berhasil ditambahkan ke Game Anak Garuda (Slide 40)!'
         );
-        showToast('Item Gim Edukasi berhasil ditambahkan!');
-      } else if (editingId) {
+      } else if (editingBirdId) {
+        // Editing one of the 10 real Bird Questions in Game Anak Garuda (Slide 40)
         updateContent((prev) =>
-          updateDragDropStatement(prev, editingId, formTitle.trim())
+          applyGarudaBirdQuestionPatch(prev, editingBirdId, {
+            text: formTitle.trim(),
+            targetChoice: formTargetGroup,
+            points: Number(formPoints) || 20,
+            topic: formCategory.trim(),
+            hidden: formStatus === 'Inactive',
+          })
         );
         setExtraState((es) => ({
           ...es,
           statusOverrides: {
             ...es.statusOverrides,
-            [editingId]: formStatus,
+            [editingBirdId]: formStatus,
           },
         }));
-        showToast('Item Gim Edukasi berhasil diperbarui!');
+        showToast(
+          'Soal Burung Starla pada Game Anak Garuda (Slide 40) berhasil diperbarui!'
+        );
+      } else if (editingId) {
+        if (
+          editingId === '6XQ2Lfxmzw1' ||
+          editingId === '5y0cYcWaZ3N' ||
+          editingId === '5iWbenzMEWM'
+        ) {
+          updateContent((prev) =>
+            applySlidePatch(prev, editingId, {
+              title: formTitle.trim(),
+            })
+          );
+          setExtraState((es) => ({
+            ...es,
+            statusOverrides: {
+              ...es.statusOverrides,
+              [editingId]: formStatus,
+            },
+          }));
+          showToast('Gim Tebak Budaya berhasil diperbarui!');
+        } else {
+          updateContent((prev) => {
+            const next = updateDragDropStatement(
+              prev,
+              editingId,
+              formTitle.trim()
+            );
+            next.quizzes.gameAnakGaruda.statements =
+              next.quizzes.gameAnakGaruda.statements.map((st) =>
+                st.id === editingId
+                  ? {
+                      ...st,
+                      targetChoice: formTargetGroup,
+                      points: Number(formPoints) || 20,
+                      topic: formCategory.trim(),
+                    }
+                  : st
+              );
+            return { ...next };
+          });
+          setExtraState((es) => ({
+            ...es,
+            statusOverrides: {
+              ...es.statusOverrides,
+              [editingId]: formStatus,
+            },
+          }));
+          showToast('Soal Gim Anak Garuda berhasil diperbarui!');
+        }
       }
     } else if (activeTab === 'kuis') {
       if (modalMode === 'add') {
@@ -1400,20 +1724,45 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   };
 
   const handleDelete360 = (id: string) => {
+    const target = extraState.tur360List.find((it) => it.id === id);
     setExtraState((prev) => ({
       ...prev,
       tur360List: prev.tur360List.filter((it) => it.id !== id),
     }));
+    if (target?.slideId && target.slideId !== '5jTlwgcUi8o') {
+      updateContent((prev) => deleteSlideItem(prev, target.slideId!));
+    }
     showToast('Tautan Embed 360° Budaya berhasil dihapus.');
   };
 
-  const handleDeleteGim = (statementId?: string) => {
-    if (!statementId) {
-      showToast('Slide Tebak Budaya bawaan tidak dapat dihapus permanen.');
+  const handleToggleOrDeleteGim = (item: GimCustomItem) => {
+    if (item.birdId) {
+      const nextInactive = item.status !== 'Inactive';
+      updateContent((prev) =>
+        applyGarudaBirdQuestionPatch(prev, item.birdId!, {
+          hidden: nextInactive,
+        })
+      );
+      setExtraState((es) => ({
+        ...es,
+        statusOverrides: {
+          ...es.statusOverrides,
+          [item.birdId!]: nextInactive ? 'Inactive' : 'Active',
+        },
+      }));
+      showToast(
+        nextInactive
+          ? `Soal #${item.id} disembunyikan dari Slide 40.`
+          : `Soal #${item.id} diaktifkan kembali di Slide 40.`
+      );
       return;
     }
-    updateContent((prev) => removeDragDropStatement(prev, statementId));
-    showToast('Pernyataan Gim Anak Garuda berhasil dihapus.');
+    if (item.statementId) {
+      updateContent((prev) => removeDragDropStatement(prev, item.statementId!));
+      showToast('Soal tambahan Gim Anak Garuda berhasil dihapus.');
+      return;
+    }
+    showToast('Slide Tebak Budaya bawaan tidak dapat dihapus permanen.');
   };
 
   const handleDeleteKuis = (slideId: string) => {
@@ -1433,7 +1782,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   };
 
   // ============================================================================
-  // DESAIN SLIDE VISUAL CANVAS HANDLERS (60FPS DRAG)
+  // DESAIN SLIDE VISUAL CANVAS HANDLERS (60FPS ZERO-LAG DRAG)
   // ============================================================================
 
   const activeDesignSlide =
@@ -1445,29 +1794,68 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   );
 
   const handleAddElementToDesignCanvas = (
-    type: 'image-button' | 'text'
+    type: 'image-button' | 'text' | '360-button'
   ) => {
     if (!activeDesignSlide) return;
+    const latest360SlideId =
+      extraState.tur360List[extraState.tur360List.length - 1]?.slideId ||
+      '5jTlwgcUi8o';
+
     updateContent((prev) => {
       const { nextSchema, createdElement } = applyAddCanvasElement(
         prev,
         activeDesignSlide.id,
-        {
-          type,
-          label:
-            type === 'image-button'
-              ? 'Tombol Materi Interaktif'
-              : 'Teks Judul Budaya',
-          x: 34,
-          y: 76,
-          width: 32,
-          height: 11,
-        }
+        type === '360-button'
+          ? {
+              type: 'image-button',
+              label: 'Buka Tur 360° Budaya',
+              imageUrl: 'mobile/5dCAlHC5W8Z.png',
+              x: 34,
+              y: 76,
+              width: 28,
+              height: 11,
+              style: {
+                backgroundColor: '#152C88',
+                textColor: '#FFFFFF',
+                borderRadius: 14,
+                fontSize: 13,
+                fontWeight: 'bold',
+                textPosition: 'overlay',
+              },
+              action: {
+                type: 'goto-slide',
+                targetSlideId: latest360SlideId,
+              },
+            }
+          : {
+              type,
+              label:
+                type === 'image-button'
+                  ? 'Tombol Navigasi Slide'
+                  : 'Teks Judul Budaya',
+              imageUrl:
+                type === 'image-button'
+                  ? 'mobile/5hv8C0oRfrb.png'
+                  : undefined,
+              x: 34,
+              y: 76,
+              width: 28,
+              height: 11,
+              action: {
+                type: type === 'image-button' ? 'goto-slide' : 'none',
+                targetSlideId:
+                  type === 'image-button' ? '5iew2M44w24' : undefined,
+              },
+            }
       );
       setSelectedCanvasElId(createdElement.id);
       return nextSchema;
     });
-    showToast('Elemen interaktif ditambahkan ke kanvas slide.');
+    showToast(
+      type === '360-button'
+        ? 'Tombol Bergambar 360° Budaya ditambahkan ke kanvas slide!'
+        : 'Elemen interaktif ditambahkan ke kanvas slide.'
+    );
   };
 
   const handleStartDragCanvasElement = (
@@ -1501,21 +1889,16 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
       Math.min(92, Number((dragState.startY + deltaYPct).toFixed(1)))
     );
 
-    updateContent((prev) =>
-      applyUpdateCanvasElement(
-        prev,
-        activeDesignSlide.id,
-        dragState.elementId,
-        {
-          x: nextX,
-          y: nextY,
-        }
-      )
-    );
+    // 60FPS transient update (does not block main thread with localStorage.setItem on every pixel move)
+    updateElementTransient(activeDesignSlide.id, dragState.elementId, {
+      x: nextX,
+      y: nextY,
+    });
   };
 
   const handleStagePointerUp = () => {
     if (dragState) {
+      commitToHistory();
       setDragState(null);
     }
   };
@@ -1740,15 +2123,19 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
     const q = searchQuery.toLowerCase().trim();
     return gimItems
       .filter((it) => {
+        if (gimFilter === 'GARUDA' && !it.isGarudaBird) return false;
+        if (gimFilter === 'TEBAK' && it.isGarudaBird) return false;
         if (!q) return true;
         return (
           it.title.toLowerCase().includes(q) ||
           it.category.toLowerCase().includes(q) ||
-          it.targetChoice.toLowerCase().includes(q)
+          it.topic.toLowerCase().includes(q) ||
+          it.targetChoice.toLowerCase().includes(q) ||
+          it.id.toLowerCase().includes(q)
         );
       })
       .slice(0, showingCount);
-  }, [gimItems, searchQuery, showingCount]);
+  }, [gimItems, searchQuery, showingCount, gimFilter]);
 
   const filteredKuis = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -1797,11 +2184,12 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   useEffect(() => {
     const root = ensureAdminStylesAndPortalRoot(isAdminOpen);
     setPortalRoot(root);
+    if (!isAdminOpen) return;
     const t1 = window.setTimeout(() => {
-      ensureAdminStylesAndPortalRoot(isAdminOpen);
+      ensureAdminStylesAndPortalRoot(true);
     }, 120);
     const t2 = window.setTimeout(() => {
-      ensureAdminStylesAndPortalRoot(isAdminOpen);
+      ensureAdminStylesAndPortalRoot(true);
     }, 450);
     return () => {
       window.clearTimeout(t1);
@@ -1946,6 +2334,9 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                   type="button"
                   id="close-admin-dashboard-btn"
                   onClick={() => {
+                    if (activeTab === 'desain' && activeDesignSlideId) {
+                      navigateToPublicSlide(activeDesignSlideId);
+                    }
                     setIsAdminOpen(false);
                     if (
                       typeof window !== 'undefined' &&
@@ -1966,9 +2357,8 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
 
             {/* 2. MAIN WORKSPACE */}
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-              {/* ROYAL BLUE HEADER BANNER (INSPIRED BY REFERENCE IMAGE) */}
+              {/* ROYAL BLUE HEADER BANNER */}
               <header className="relative bg-gradient-to-r from-[#12267A] via-[#1B38A8] to-[#2563EB] text-white px-6 lg:px-8 pt-5 pb-12 shrink-0 overflow-hidden">
-                {/* Subtle geometric facet shapes matching reference image */}
                 <div className="pointer-events-none absolute -top-12 right-24 w-56 h-56 bg-white/5 rotate-12 rounded-3xl" />
                 <div className="pointer-events-none absolute top-4 right-72 w-36 h-36 bg-sky-400/10 -rotate-12 rounded-full blur-xl" />
 
@@ -2001,7 +2391,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Cari materi budaya, soal kuis, atau slide..."
+                      placeholder="Cari materi budaya, soal Anak Garuda, kuis, atau slide..."
                       className="w-full pl-11 pr-4 py-2.5 bg-white rounded-full text-sm text-slate-700 placeholder:text-slate-400 shadow-lg shadow-blue-950/20 focus:outline-none focus:ring-2 focus:ring-sky-300 transition-all"
                     />
                   </div>
@@ -2028,7 +2418,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                       type="button"
                       onClick={() =>
                         showToast(
-                          'Semua modul materi, 360° Budaya, dan desain slide aktif.'
+                          'Semua modul materi, 360° Budaya, Gim Anak Garuda, dan desain slide aktif.'
                         )
                       }
                       className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white relative transition-colors cursor-pointer"
@@ -2040,7 +2430,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
 
                     <div className="flex items-center gap-2.5 pl-2 border-l border-white/20">
                       <img
-                        src="story_content/5hv8C0oRfrb.png"
+                        src="mobile/5hv8C0oRfrb.png"
                         alt="Admin Starla"
                         className="w-10 h-10 rounded-full object-cover bg-amber-100 border-2 border-white shadow-md"
                       />
@@ -2057,7 +2447,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                 </div>
               </header>
 
-              {/* MAIN SCROLLABLE CONTENT SHEET (ROUNDED TOP OVERLAPPING ROYAL BLUE HEADER) */}
+              {/* MAIN SCROLLABLE CONTENT SHEET */}
               <main className="flex-1 overflow-y-auto px-4 sm:px-8 pb-8 -mt-6 relative z-20 space-y-6">
                 {/* ACTION BAR FOR CRUD TABS */}
                 {(activeTab === 'materi' ||
@@ -2094,10 +2484,36 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                             {materiSubTopics.map((topic) => (
                               <option key={topic} value={topic}>
                                 {topic === 'ALL'
-                                  ? 'Semua Topik Materi (17 Slide)'
+                                  ? `Semua Topik Materi (${materiItems.length} Slide)`
                                   : topic}
                               </option>
                             ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Module Filter for Gim Edukasi (Game Anak Garuda vs Tebak Budaya) */}
+                      {activeTab === 'gim' && (
+                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700">
+                          <Filter className="w-3.5 h-3.5 text-purple-600" />
+                          <select
+                            value={gimFilter}
+                            onChange={(e) =>
+                              setGimFilter(
+                                e.target.value as 'ALL' | 'GARUDA' | 'TEBAK'
+                              )
+                            }
+                            className="bg-transparent font-bold text-slate-700 focus:outline-none"
+                          >
+                            <option value="ALL">
+                              Semua Tantangan Gim ({gimItems.length} Soal)
+                            </option>
+                            <option value="GARUDA">
+                              Game Anak Garuda — Slide 40 (10+ Soal Drag & Drop)
+                            </option>
+                            <option value="TEBAK">
+                              Gim Tebak Budaya — Slide 4–6 (3 Soal)
+                            </option>
                           </select>
                         </div>
                       )}
@@ -2122,9 +2538,11 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                         <Plus className="w-4 h-4" />
                         <span>
                           {activeTab === 'tur360'
-                            ? '+ Tambah Tautan Embed'
+                            ? '+ Tambah Tautan Embed 360°'
                             : activeTab === 'materi'
                             ? '+ Tambah Materi Baru'
+                            : activeTab === 'gim'
+                            ? '+ Tambah Soal Anak Garuda'
                             : '+ Tambah Baru'}
                         </span>
                       </button>
@@ -2137,7 +2555,6 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                 ========================================================= */}
                 {activeTab === 'dashboard' && (
                   <div className="space-y-6">
-                    {/* Quick Module Icon Tiles (Inspired by Reference Image Left Screen) */}
                     <div className="bg-white rounded-3xl p-6 shadow-[0_10px_30px_rgba(21,44,136,0.06)] border border-slate-100">
                       <div className="flex items-center justify-between mb-5">
                         <div>
@@ -2145,11 +2562,11 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                             Menu Utama Studio Budaya
                           </h3>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            Pilih modul untuk mengelola materi budaya, tautan embed 360°, kuis, atau desain slide 1:1
+                            Pilih modul untuk mengelola materi budaya, tautan embed 360°, soal Anak Garuda, kuis, atau desain slide 1:1
                           </p>
                         </div>
                         <span className="px-3 py-1 rounded-full bg-blue-50 text-[#152C88] text-xs font-bold">
-                          Aktif & Terhubung
+                          Aktif & Bebas Lag
                         </span>
                       </div>
 
@@ -2179,7 +2596,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                           {
                             key: 'gim' as AdminTabKey,
                             title: 'Gim Edukasi',
-                            sub: `${gimItems.length} Tantangan`,
+                            sub: `${gimItems.length} Soal Garuda & Gim`,
                             icon: Gamepad2,
                             bg: 'bg-purple-50 text-purple-600 border-purple-100',
                           },
@@ -2223,7 +2640,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                       </div>
                     </div>
 
-                    {/* Floating Card Rows Preview of Pure Materi Budaya (Inspired by Reference Image Middle Screen) */}
+                    {/* Floating Card Rows Preview of Pure Materi Budaya */}
                     <div className="bg-white rounded-3xl p-6 shadow-[0_10px_30px_rgba(21,44,136,0.06)] border border-slate-100">
                       <div className="flex items-center justify-between mb-4">
                         <div>
@@ -2231,7 +2648,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                             Daftar Inti Materi Keragaman Budaya
                           </h3>
                           <p className="text-xs text-slate-500 mt-0.5">
-                             Menampilkan khusus slide materi pembelajaran budaya (tanpa tercampur slide kuis/login)
+                            Menampilkan khusus slide materi pembelajaran budaya (tanpa tercampur slide kuis/login)
                           </p>
                         </div>
                         <button
@@ -2370,6 +2787,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                                     type="button"
                                     onClick={() => {
                                       setActiveDesignSlideId(item.id);
+                                      navigateToPublicSlide(item.id);
                                       setActiveTab('desain');
                                     }}
                                     className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors cursor-pointer"
@@ -2404,7 +2822,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                 )}
 
                 {/* =========================================================
-                    TAB 3: 360° BUDAYA (HANYA KOLOM TAUTAN EMBED)
+                    TAB 3: 360° BUDAYA (HANYA KOLOM TAUTAN EMBED + SMART SLIDE & BUTTON LINKER)
                 ========================================================= */}
                 {activeTab === 'tur360' && (
                   <div className="space-y-6">
@@ -2419,7 +2837,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                               Daftar Tautan Embed 360° Budaya
                             </h3>
                             <p className="text-xs text-slate-500">
-                              Terhubung langsung ke WebObject Slide 8 (Eksplorasi Tur Virtual 360° Budaya)
+                              Menambahkan tautan embed baru otomatis membuat Slide 360° baru & memasang Tombol Bergambar yang bisa diatur di Desain Slide
                             </p>
                           </div>
                         </div>
@@ -2433,7 +2851,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                               <th className="py-3.5 px-4">
                                 Tautan Embed (URL 360° Budaya)
                               </th>
-                              <th className="py-3.5 px-6 text-right w-48">
+                              <th className="py-3.5 px-6 text-right w-72">
                                 Aksi
                               </th>
                             </tr>
@@ -2445,26 +2863,54 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                                 className="hover:bg-slate-50/80 transition-colors"
                               >
                                 <td className="py-4 px-6 font-mono text-xs font-bold text-slate-500">
-                                  {item.code}
+                                  <div>{item.code}</div>
+                                  <span className="inline-block mt-0.5 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold">
+                                    Slide {item.slideNumber}
+                                  </span>
                                 </td>
                                 <td className="py-4 px-4">
                                   <div className="flex items-center gap-3">
                                     <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                                       <Compass className="w-4 h-4" />
                                     </div>
-                                    <a
-                                      href={item.embedUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="font-mono text-xs sm:text-sm font-bold text-[#2563EB] hover:underline break-all flex items-center gap-1.5"
-                                    >
-                                      <span>{item.embedUrl}</span>
-                                      <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                                    </a>
+                                    <div>
+                                      <a
+                                        href={item.embedUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="font-mono text-xs sm:text-sm font-bold text-[#2563EB] hover:underline break-all flex items-center gap-1.5"
+                                      >
+                                        <span>{item.embedUrl}</span>
+                                        <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                                      </a>
+                                      <p className="text-[11px] text-slate-400 mt-0.5">
+                                        Target: {item.slideTitle} (Slide{' '}
+                                        {item.slideNumber})
+                                      </p>
+                                    </div>
                                   </div>
                                 </td>
                                 <td className="py-4 px-6 text-right">
                                   <div className="inline-flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const menuSlide =
+                                          item.buttonSlideId || '5iew2M44w24';
+                                        setActiveDesignSlideId(menuSlide);
+                                        navigateToPublicSlide(menuSlide);
+                                        if (item.buttonElementId) {
+                                          setSelectedCanvasElId(
+                                            item.buttonElementId
+                                          );
+                                        }
+                                        setActiveTab('desain');
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors cursor-pointer"
+                                      title="Atur Posisi & Gambar Tombol 360° di Halaman Slide"
+                                    >
+                                      Atur Tombol di Slide
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={() =>
@@ -2534,18 +2980,43 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                 )}
 
                 {/* =========================================================
-                    TAB 4: GIM EDUKASI
+                    TAB 4: GIM EDUKASI (SMART MANAGEMENT FOR ALL 10 GAME ANAK GARUDA QUESTIONS + TEBAK BUDAYA)
                 ========================================================= */}
                 {activeTab === 'gim' && (
                   <div className="bg-white rounded-3xl shadow-[0_10px_30px_rgba(21,44,136,0.06)] border border-slate-100 overflow-hidden">
+                    <div className="px-6 py-4 bg-gradient-to-r from-purple-50/80 to-blue-50/40 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-[#152C88]">
+                          Manajemen Soal Game Anak Garuda (Slide 40) & Gim Tebak Budaya (Slide 4–6)
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Kelola seluruh 10 Soal Burung Starla (teks pernyataan, kunci Budaya yang Benar vs Budaya yang Salah, bobot poin, & visibilitas) secara real-time.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveDesignSlideId('6G1VrKuOhCw');
+                          setActiveTab('desain');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-800 text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        Lihat Kanvas Game Anak Garuda (Slide 40) →
+                      </button>
+                    </div>
+
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse">
                         <thead>
                           <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/60">
-                            <th className="py-3.5 px-6">Pernyataan / Tantangan Gim</th>
-                            <th className="py-3.5 px-4">ID</th>
-                            <th className="py-3.5 px-4">Modul Gim</th>
-                            <th className="py-3.5 px-4">Kelompok Jawaban</th>
+                            <th className="py-3.5 px-6">
+                              Pernyataan Soal / Tantangan Gim
+                            </th>
+                            <th className="py-3.5 px-4">ID Soal</th>
+                            <th className="py-3.5 px-4">Modul & Topik</th>
+                            <th className="py-3.5 px-4">
+                              Kunci Kategori & Poin
+                            </th>
                             <th className="py-3.5 px-4">Status</th>
                             <th className="py-3.5 px-6 text-right">Aksi</th>
                           </tr>
@@ -2568,14 +3039,27 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                                   </p>
                                 </div>
                               </td>
-                              <td className="py-3.5 px-4 font-mono text-xs font-semibold text-slate-500">
+                              <td className="py-3.5 px-4 font-mono text-xs font-bold text-purple-700">
                                 #{item.id}
                               </td>
-                              <td className="py-3.5 px-4 text-xs font-semibold text-slate-600">
-                                {item.category}
+                              <td className="py-3.5 px-4">
+                                <p className="text-xs font-bold text-slate-700">
+                                  {item.category}
+                                </p>
+                                <p className="text-[11px] text-slate-400">
+                                  {item.topic}
+                                </p>
                               </td>
-                              <td className="py-3.5 px-4 text-xs font-bold text-blue-600">
-                                {item.targetChoice} ({item.points} Poin)
+                              <td className="py-3.5 px-4">
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${
+                                    item.targetChoice === 'Budaya yang Benar'
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                  }`}
+                                >
+                                  {item.targetChoice} (+{item.points} Poin)
+                                </span>
                               </td>
                               <td className="py-3.5 px-4">
                                 {renderBadge(item.status)}
@@ -2584,20 +3068,37 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                                 <div className="inline-flex items-center gap-1.5">
                                   <button
                                     type="button"
+                                    onClick={() => {
+                                      setActiveDesignSlideId(item.slideId);
+                                      setActiveTab('desain');
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors cursor-pointer"
+                                    title="Lihat di Kanvas Slide"
+                                  >
+                                    Slide
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => openEditModalForGim(item)}
                                     className="p-2 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-                                    title="Edit Gim"
+                                    title="Edit Teks Soal, Kunci Jawaban & Poin"
                                   >
                                     <Edit3 className="w-4 h-4" />
                                   </button>
-                                  {item.statementId && (
+                                  {(item.birdId || item.statementId) && (
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        handleDeleteGim(item.statementId)
+                                        handleToggleOrDeleteGim(item)
                                       }
                                       className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                      title="Hapus Gim"
+                                      title={
+                                        item.birdId
+                                          ? item.status === 'Inactive'
+                                            ? 'Tampilkan Kembali Soal Ini'
+                                            : 'Sembunyikan Soal Ini di Slide 40'
+                                          : 'Hapus Soal Tambahan'
+                                      }
                                     >
                                       <Trash2 className="w-4 h-4" />
                                     </button>
@@ -2698,7 +3199,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                 )}
 
                 {/* =========================================================
-                    TAB 6: DESAIN SLIDE (100% PUBLIC LAYOUT WITHOUT CHANGING POSITIONS)
+                    TAB 6: DESAIN SLIDE (100% PUBLIC LAYOUT + SMART 360° & IMAGE BUTTON INSPECTOR)
                 ========================================================= */}
                 {activeTab === 'desain' && activeDesignSlide && (
                   <div className="space-y-5">
@@ -2799,13 +3300,26 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
 
                         <button
                           type="button"
+                          id="add-360-image-btn"
+                          onClick={() =>
+                            handleAddElementToDesignCanvas('360-button')
+                          }
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-[#152C88] text-xs font-bold border border-indigo-200 transition-colors cursor-pointer"
+                          title="Tambahkan Tombol Bergambar yang Menuju ke Slide 360° Budaya"
+                        >
+                          <Compass className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>+ Tombol Gambar 360°</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() =>
                             handleAddElementToDesignCanvas('image-button')
                           }
                           className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition-colors cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>Tombol</span>
+                          <span>Tombol Slide</span>
                         </button>
                         <button
                           type="button"
@@ -2911,7 +3425,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                         </div>
                       </div>
 
-                      {/* Right Inspector: Slide Properties & Nama Slide Editor (4 cols on large screens) */}
+                      {/* Right Inspector: Slide Properties & Smart Image Button / 360° Linker (4 cols on large screens) */}
                       <div className="lg:col-span-4 bg-white rounded-3xl p-5 shadow-[0_10px_30px_rgba(21,44,136,0.06)] border border-slate-100 space-y-4">
                         <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                           <Layers className="w-4 h-4 text-[#2563EB]" />
@@ -2943,12 +3457,41 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                           />
                         </div>
 
+                        {/* If this slide is a 360° Budaya slide, allow editing its Embed URL right here too */}
+                        {activeDesignMeta.category === 'tur360' && (
+                          <div>
+                            <label className="block text-xs font-bold text-emerald-700 mb-1">
+                              Tautan Embed 360° pada Slide Ini
+                            </label>
+                            <input
+                              type="url"
+                              value={
+                                activeDesignSlide.webObjectUrl ||
+                                primary360EmbedUrl
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateContent((prev) =>
+                                  applySlidePatch(
+                                    prev,
+                                    activeDesignSlide.id,
+                                    {
+                                      webObjectUrl: val,
+                                    }
+                                  )
+                                );
+                              }}
+                              className="w-full px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50/30 text-xs font-mono text-slate-800 focus:outline-none focus:border-emerald-600"
+                            />
+                          </div>
+                        )}
+
                         <div>
                           <label className="block text-xs font-bold text-slate-600 mb-1">
                             Ringkasan / Teks Narasi Slide
                           </label>
                           <textarea
-                            rows={4}
+                            rows={3}
                             value={activeDesignMeta.smartSummary}
                             onChange={(e) => {
                               const val = e.target.value;
@@ -2971,7 +3514,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                           />
                         </div>
 
-                        {/* Selected Custom Overlay Inspector */}
+                        {/* Selected Custom Overlay Inspector (Complete Image + Target Slide 360° Linker) */}
                         {selectedCanvasElId &&
                           (() => {
                             const sel = (
@@ -2979,32 +3522,382 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                             ).find((c) => c.id === selectedCanvasElId);
                             if (!sel) return null;
                             return (
-                              <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-2.5">
+                              <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-3">
                                 <div className="flex items-center justify-between">
                                   <span className="text-xs font-extrabold text-[#152C88] flex items-center gap-1.5">
                                     <Move className="w-3.5 h-3.5" />
-                                    Edit Elemen Tambahan
+                                    Pengaturan Tombol & Tautan Slide
                                   </span>
                                   <span className="text-[11px] font-mono text-blue-700">
                                     X:{sel.x}% • Y:{sel.y}%
                                   </span>
                                 </div>
-                                <input
-                                  type="text"
-                                  value={sel.label}
-                                  onChange={(e) =>
-                                    updateContent((prev) =>
-                                      applyUpdateCanvasElement(
-                                        prev,
-                                        activeDesignSlide.id,
-                                        sel.id,
-                                        { label: e.target.value }
+
+                                {/* Label Teks Tombol */}
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                    Label Teks Tombol
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={sel.label || ''}
+                                    onChange={(e) =>
+                                      updateContent((prev) =>
+                                        applyUpdateCanvasElement(
+                                          prev,
+                                          activeDesignSlide.id,
+                                          sel.id,
+                                          { label: e.target.value }
+                                        )
                                       )
-                                    )
-                                  }
-                                  placeholder="Label teks elemen..."
-                                  className="w-full px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-xs font-bold text-slate-800"
-                                />
+                                    }
+                                    placeholder="Label teks tombol..."
+                                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-xs font-bold text-slate-800"
+                                  />
+                                </div>
+
+                                {/* Gambar Tombol + Preset Ikon Starla */}
+                                <div>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[11px] font-bold text-slate-600">
+                                      Gambar Tombol (URL / Upload)
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateContent((prev) =>
+                                          applyUpdateCanvasElement(
+                                            prev,
+                                            activeDesignSlide.id,
+                                            sel.id,
+                                            {
+                                              style: {
+                                                ...sel.style,
+                                                textPosition:
+                                                  sel.style?.textPosition ===
+                                                  'hidden'
+                                                    ? 'overlay'
+                                                    : 'hidden',
+                                              },
+                                            }
+                                          )
+                                        )
+                                      }
+                                      className="text-[10px] font-bold text-blue-700 hover:underline cursor-pointer"
+                                    >
+                                      {sel.style?.textPosition === 'hidden'
+                                        ? 'Mode: Gambar Saja'
+                                        : 'Mode: Gambar + Teks'}
+                                    </button>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="text"
+                                      value={sel.imageUrl || ''}
+                                      onChange={(e) =>
+                                        updateContent((prev) =>
+                                          applyUpdateCanvasElement(
+                                            prev,
+                                            activeDesignSlide.id,
+                                            sel.id,
+                                            { imageUrl: e.target.value }
+                                          )
+                                        )
+                                      }
+                                      placeholder="mobile/5dCAlHC5W8Z.png"
+                                      className="flex-1 px-2.5 py-1.5 rounded-lg bg-white border border-blue-200 text-xs text-slate-700"
+                                    />
+                                    <label className="p-2 rounded-lg bg-white hover:bg-blue-100 text-blue-700 border border-blue-200 cursor-pointer">
+                                      <ImageIcon className="w-3.5 h-3.5" />
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(ev) => {
+                                          const f = ev.target.files?.[0];
+                                          if (!f) return;
+                                          const r = new FileReader();
+                                          r.onload = () => {
+                                            if (typeof r.result === 'string') {
+                                              updateContent((prev) =>
+                                                applyUpdateCanvasElement(
+                                                  prev,
+                                                  activeDesignSlide.id,
+                                                  sel.id,
+                                                  {
+                                                    imageUrl:
+                                                      r.result as string,
+                                                  }
+                                                )
+                                              );
+                                            }
+                                          };
+                                          r.readAsDataURL(f);
+                                        }}
+                                        className="hidden"
+                                      />
+                                    </label>
+                                  </div>
+
+                                  {/* 6 One-Click Starla Button Presets */}
+                                  <div className="grid grid-cols-6 gap-1.5 mt-2">
+                                    {STARLA_BUTTON_PRESETS.map((preset) => (
+                                      <button
+                                        key={preset.id}
+                                        type="button"
+                                        onClick={() =>
+                                          updateContent((prev) =>
+                                            applyUpdateCanvasElement(
+                                              prev,
+                                              activeDesignSlide.id,
+                                              sel.id,
+                                              { imageUrl: preset.imageUrl }
+                                            )
+                                          )
+                                        }
+                                        title={preset.label}
+                                        className={`p-1 rounded-lg bg-white border hover:border-blue-500 flex items-center justify-center cursor-pointer ${
+                                          sel.imageUrl === preset.imageUrl
+                                            ? 'border-blue-600 ring-2 ring-blue-400/30'
+                                            : 'border-slate-200'
+                                        }`}
+                                      >
+                                        <img
+                                          src={preset.imageUrl}
+                                          alt={preset.label}
+                                          className="w-6 h-6 object-contain"
+                                        />
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Pilihan Aksi & Tautan ke Slide 360° Baru / Slide Lainnya */}
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                    Aksi Saat Tombol Diklik di Layar Publik
+                                  </label>
+                                  <select
+                                    value={sel.action?.type || 'goto-slide'}
+                                    onChange={(e) => {
+                                      const nextType = e.target
+                                        .value as CanvasActionType;
+                                      updateContent((prev) =>
+                                        applyUpdateCanvasElement(
+                                          prev,
+                                          activeDesignSlide.id,
+                                          sel.id,
+                                          {
+                                            action: {
+                                              ...sel.action,
+                                              type: nextType,
+                                              targetSlideId:
+                                                sel.action?.targetSlideId ||
+                                                allTur360Slides[
+                                                  allTur360Slides.length - 1
+                                                ]?.slide.id ||
+                                                '5jTlwgcUi8o',
+                                              externalUrl:
+                                                sel.action?.externalUrl ||
+                                                primary360EmbedUrl,
+                                            },
+                                          }
+                                        )
+                                      );
+                                    }}
+                                    className="w-full px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-xs font-bold text-slate-800"
+                                  >
+                                    <option value="goto-slide">
+                                      Buka Halaman Slide (Slide 360° / Materi)
+                                    </option>
+                                    <option value="external-url">
+                                      Buka Tautan Embed 360° Langsung (Overlay)
+                                    </option>
+                                    <option value="none">
+                                      Tanpa Aksi (Hanya Gambar / Teks)
+                                    </option>
+                                  </select>
+                                </div>
+
+                                {sel.action?.type === 'goto-slide' && (
+                                  <div>
+                                    <label className="block text-[11px] font-bold text-emerald-800 mb-1">
+                                      Pilih Slide Tujuan (Termasuk Slide 360° Baru)
+                                    </label>
+                                    <select
+                                      value={
+                                        sel.action?.targetSlideId ||
+                                        '5jTlwgcUi8o'
+                                      }
+                                      onChange={(e) =>
+                                        updateContent((prev) =>
+                                          applyUpdateCanvasElement(
+                                            prev,
+                                            activeDesignSlide.id,
+                                            sel.id,
+                                            {
+                                              action: {
+                                                ...sel.action,
+                                                type: 'goto-slide',
+                                                targetSlideId: e.target.value,
+                                              },
+                                            }
+                                          )
+                                        )
+                                      }
+                                      className="w-full px-3 py-1.5 rounded-lg bg-white border border-emerald-300 text-xs font-bold text-[#152C88]"
+                                    >
+                                      <optgroup label="🌐 Slide Eksplorasi 360° Budaya">
+                                        {allTur360Slides.map(
+                                          ({ slide: s360, meta: m360 }) => (
+                                            <option
+                                              key={s360.id}
+                                              value={s360.id}
+                                            >
+                                              Slide {m360.slideNumber} —{' '}
+                                              {m360.smartTitle}
+                                            </option>
+                                          )
+                                        )}
+                                      </optgroup>
+                                      <optgroup label="📑 Seluruh Halaman Slide Lainnya">
+                                        {allSlidesWithMeta.map(
+                                          ({ slideId: sId, meta: m }) => (
+                                            <option key={sId} value={sId}>
+                                              Slide {m.slideNumber} —{' '}
+                                              {m.smartTitle}
+                                            </option>
+                                          )
+                                        )}
+                                      </optgroup>
+                                    </select>
+                                  </div>
+                                )}
+
+                                {sel.action?.type === 'external-url' && (
+                                  <div>
+                                    <label className="block text-[11px] font-bold text-emerald-800 mb-1">
+                                      Pilih / Ketik Tautan Embed 360° Tujuan
+                                    </label>
+                                    <select
+                                      value={
+                                        sel.action?.externalUrl ||
+                                        primary360EmbedUrl
+                                      }
+                                      onChange={(e) =>
+                                        updateContent((prev) =>
+                                          applyUpdateCanvasElement(
+                                            prev,
+                                            activeDesignSlide.id,
+                                            sel.id,
+                                            {
+                                              action: {
+                                                ...sel.action,
+                                                type: 'external-url',
+                                                externalUrl: e.target.value,
+                                              },
+                                            }
+                                          )
+                                        )
+                                      }
+                                      className="w-full px-3 py-1.5 rounded-lg bg-white border border-emerald-300 text-xs font-mono text-slate-800 mb-1.5"
+                                    >
+                                      {tur360Items.map((t360) => (
+                                        <option
+                                          key={t360.id}
+                                          value={t360.embedUrl}
+                                        >
+                                          {t360.code}: {t360.embedUrl}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      type="url"
+                                      value={sel.action?.externalUrl || ''}
+                                      onChange={(e) =>
+                                        updateContent((prev) =>
+                                          applyUpdateCanvasElement(
+                                            prev,
+                                            activeDesignSlide.id,
+                                            sel.id,
+                                            {
+                                              action: {
+                                                ...sel.action,
+                                                type: 'external-url',
+                                                externalUrl: e.target.value,
+                                              },
+                                            }
+                                          )
+                                        )
+                                      }
+                                      placeholder="https://..."
+                                      className="w-full px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-xs font-mono text-slate-800"
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Width & Height Controls */}
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                                      Lebar ({sel.width}%)
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={4}
+                                      max={90}
+                                      value={sel.width}
+                                      onChange={(e) =>
+                                        updateContent((prev) =>
+                                          applyUpdateCanvasElement(
+                                            prev,
+                                            activeDesignSlide.id,
+                                            sel.id,
+                                            {
+                                              width: Math.max(
+                                                4,
+                                                Math.min(
+                                                  90,
+                                                  Number(e.target.value) || 10
+                                                )
+                                              ),
+                                            }
+                                          )
+                                        )
+                                      }
+                                      className="w-full px-2.5 py-1 rounded-lg bg-white border border-blue-200 text-xs font-bold"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                                      Tinggi ({sel.height}%)
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={4}
+                                      max={90}
+                                      value={sel.height}
+                                      onChange={(e) =>
+                                        updateContent((prev) =>
+                                          applyUpdateCanvasElement(
+                                            prev,
+                                            activeDesignSlide.id,
+                                            sel.id,
+                                            {
+                                              height: Math.max(
+                                                4,
+                                                Math.min(
+                                                  90,
+                                                  Number(e.target.value) || 8
+                                                )
+                                              ),
+                                            }
+                                          )
+                                        )
+                                      }
+                                      className="w-full px-2.5 py-1 rounded-lg bg-white border border-blue-200 text-xs font-bold"
+                                    />
+                                  </div>
+                                </div>
                               </div>
                             );
                           })()}
@@ -3012,8 +3905,9 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                           <span>ID Slide: #{activeDesignSlide.id}</span>
                           <span>
-                            {activeDesignSlide.images.length} Gambar •{' '}
-                            {activeDesignSlide.audios.length} Audio
+                            {(activeDesignSlide.canvasElements || []).length}{' '}
+                            Tombol Kustom • {activeDesignSlide.audios.length}{' '}
+                            Audio
                           </span>
                         </div>
                       </div>
@@ -3252,7 +4146,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
             </div>
 
             {/* ===============================================================
-                MODAL CRUD FORM (TAILORED PER TAB — 360° ONLY HAS EMBED LINK)
+                MODAL CRUD FORM (TAILORED PER TAB)
             =============================================================== */}
             {isModalOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
@@ -3261,8 +4155,12 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                     <h3 className="text-base font-extrabold">
                       {activeTab === 'tur360'
                         ? modalMode === 'add'
-                          ? 'Tambah Tautan Embed 360° Budaya'
+                          ? 'Tambah Tautan Embed 360° Budaya & Tombol Slide'
                           : 'Edit Tautan Embed 360° Budaya'
+                        : activeTab === 'gim'
+                        ? modalMode === 'add'
+                          ? 'Tambah Soal Baru Game Anak Garuda (Slide 40)'
+                          : 'Edit Soal Game Anak Garuda / Gim Budaya'
                         : modalMode === 'add'
                         ? 'Tambah Data Budaya Baru'
                         : 'Edit Data Budaya'}
@@ -3276,7 +4174,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                     </button>
                   </div>
 
-                  {/* IF TAB === 'tur360': ONLY SHOW EMBED URL FIELD */}
+                  {/* IF TAB === 'tur360': EMBED URL + SMART SLIDE & IMAGE BUTTON LINKER */}
                   {activeTab === 'tur360' ? (
                     <form onSubmit={handleSaveModal} className="p-6 space-y-4">
                       <div>
@@ -3294,10 +4192,100 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm font-mono text-slate-800 focus:outline-none focus:border-blue-600"
                           />
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-1.5">
-                          Masukkan tautan embed halaman tur virtual 360° yang akan ditampilkan pada Slide 8.
-                        </p>
                       </div>
+
+                      {modalMode === 'add' && (
+                        <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-3">
+                          <label className="flex items-center gap-2 text-xs font-extrabold text-[#152C88] cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={form360CreateButton}
+                              onChange={(e) =>
+                                setForm360CreateButton(e.target.checked)
+                              }
+                            />
+                            <span>
+                              Pasang Tombol Bergambar Otomatis ke Halaman Slide
+                            </span>
+                          </label>
+
+                          {form360CreateButton && (
+                            <div className="space-y-3 pt-1">
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                  Pasang Tombol di Halaman Slide Mana?
+                                </label>
+                                <select
+                                  value={form360TargetMenuSlideId}
+                                  onChange={(e) =>
+                                    setForm360TargetMenuSlideId(e.target.value)
+                                  }
+                                  className="w-full px-3 py-2 rounded-xl bg-white border border-blue-200 text-xs font-bold text-slate-800"
+                                >
+                                  <option value="5iew2M44w24">
+                                    Slide 43 — Menu Pilihan Materi Keragaman Budaya (Rekomendasi)
+                                  </option>
+                                  <option value="6eHtnAfM3bY">
+                                    Slide 36 — Menu Utama Petualangan Starla Budaya
+                                  </option>
+                                  <option value="5jTlwgcUi8o">
+                                    Slide 8 — Eksplorasi Tur Virtual 360° Budaya #1
+                                  </option>
+                                  {allSlidesWithMeta.map(({ slideId, meta }) => (
+                                    <option key={slideId} value={slideId}>
+                                      Slide {meta.slideNumber} — {meta.smartTitle}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                  Label Tombol & Nama Slide 360° Baru
+                                </label>
+                                <input
+                                  type="text"
+                                  value={form360ButtonLabel}
+                                  onChange={(e) =>
+                                    setForm360ButtonLabel(e.target.value)
+                                  }
+                                  placeholder="Tur 360° Budaya #2"
+                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-xs font-bold text-slate-800"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                  Pilih Gambar Tombol 360°
+                                </label>
+                                <div className="grid grid-cols-6 gap-1.5">
+                                  {STARLA_BUTTON_PRESETS.map((preset) => (
+                                    <button
+                                      key={preset.id}
+                                      type="button"
+                                      onClick={() =>
+                                        setForm360ButtonImage(preset.imageUrl)
+                                      }
+                                      className={`p-1.5 rounded-xl bg-white border flex items-center justify-center cursor-pointer ${
+                                        form360ButtonImage === preset.imageUrl
+                                          ? 'border-blue-600 ring-2 ring-blue-400/30'
+                                          : 'border-slate-200'
+                                      }`}
+                                      title={preset.label}
+                                    >
+                                      <img
+                                        src={preset.imageUrl}
+                                        alt={preset.label}
+                                        className="w-7 h-7 object-contain"
+                                      />
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
                         <button
@@ -3328,7 +4316,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                           {activeTab === 'kuis'
                             ? 'Pertanyaan Kuis'
                             : activeTab === 'gim'
-                            ? 'Pernyataan Sikap Budaya'
+                            ? 'Teks Pernyataan Soal (pada Gelembung Burung Starla)'
                             : 'Judul Materi Budaya'}
                         </label>
                         <input
@@ -3336,7 +4324,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                           required
                           value={formTitle}
                           onChange={(e) => setFormTitle(e.target.value)}
-                          placeholder="Masukkan judul atau teks..."
+                          placeholder="Masukkan judul atau teks pernyataan soal..."
                           className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:border-blue-600"
                         />
                       </div>
@@ -3355,7 +4343,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-700 mb-1">
-                            Status Badge
+                            Status Soal / Slide
                           </label>
                           <select
                             value={formStatus}
@@ -3364,11 +4352,13 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                             }
                             className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-600"
                           >
-                            <option value="Active">Active</option>
+                            <option value="Active">Active (Tampil)</option>
                             <option value="Unggulan">Unggulan</option>
                             <option value="Populer">Populer</option>
                             <option value="Pending">Pending</option>
-                            <option value="Inactive">Inactive</option>
+                            <option value="Inactive">
+                              Inactive (Sembunyikan)
+                            </option>
                           </select>
                         </div>
                       </div>
@@ -3389,28 +4379,46 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                       )}
 
                       {activeTab === 'gim' && (
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">
-                            Target Kelompok Drag & Drop
-                          </label>
-                          <select
-                            value={formTargetGroup}
-                            onChange={(e) =>
-                              setFormTargetGroup(
-                                e.target.value as
-                                  | 'Budaya yang Benar'
-                                  | 'Budaya yang Salah'
-                              )
-                            }
-                            className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800"
-                          >
-                            <option value="Budaya yang Benar">
-                              Budaya yang Benar (+10 Poin)
-                            </option>
-                            <option value="Budaya yang Salah">
-                              Budaya yang Salah (+10 Poin)
-                            </option>
-                          </select>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">
+                              Kunci Kategori Jawaban (Drag & Drop)
+                            </label>
+                            <select
+                              value={formTargetGroup}
+                              onChange={(e) =>
+                                setFormTargetGroup(
+                                  e.target.value as
+                                    | 'Budaya yang Benar'
+                                    | 'Budaya yang Salah'
+                                )
+                              }
+                              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800"
+                            >
+                              <option value="Budaya yang Benar">
+                                Budaya yang Benar (Sikap Menghargai)
+                              </option>
+                              <option value="Budaya yang Salah">
+                                Budaya yang Salah (Sikap Tidak Menghargai)
+                              </option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">
+                              Bobot Poin Saat Jawaban Benar
+                            </label>
+                            <input
+                              type="number"
+                              min={5}
+                              max={100}
+                              step={5}
+                              value={formPoints}
+                              onChange={(e) =>
+                                setFormPoints(Number(e.target.value) || 20)
+                              }
+                              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-800"
+                            />
+                          </div>
                         </div>
                       )}
 

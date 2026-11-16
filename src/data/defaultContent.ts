@@ -328,6 +328,22 @@ export interface QuizQuestionItem {
 export interface DragDropStatementItem {
   id: string;
   text: string;
+  birdId?: string;
+  textObjId?: string;
+  commandSetId?: string;
+  targetChoice?: 'Budaya yang Benar' | 'Budaya yang Salah';
+  points?: number;
+  topic?: string;
+  hidden?: boolean;
+}
+
+export interface GarudaQuestionOverride {
+  birdId: string;
+  text?: string;
+  targetChoice?: 'Budaya yang Benar' | 'Budaya yang Salah';
+  points?: number;
+  hidden?: boolean;
+  topic?: string;
 }
 
 export interface DragDropInteractionConfig {
@@ -340,6 +356,7 @@ export interface DragDropInteractionConfig {
   resultsSlideId: string;
   choices: { id: string; text: string }[];
   statements: DragDropStatementItem[];
+  questionOverrides?: Record<string, GarudaQuestionOverride>;
 }
 
 export interface ElementOverrideConfig {
@@ -372,6 +389,8 @@ export interface SlideContentItem {
   height: number;
   resume: boolean;
   backgroundUrl: string | null;
+  webObjectUrl?: string | null;
+  customCategory?: 'materi' | 'tur360' | 'gim' | 'kuis' | 'pembuka' | 'menu' | 'hasil';
   instructions: string[];
   texts: SlideTextBlock[];
   audios: SlideAudioRef[];

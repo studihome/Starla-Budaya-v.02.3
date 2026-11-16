@@ -18,6 +18,7 @@ export interface SlideSmartMeta {
   materiOrder?: number;
   smartSummary: string;
   backgroundUrl: string | null;
+  webObjectUrl?: string | null;
 }
 
 export interface ExactStageObject {
@@ -46,16 +47,230 @@ export interface ExactSlideRuntimeData {
   pathsLib: Record<string, any>;
 }
 
+export interface GarudaBirdQuestionSpec {
+  questionNumber: number;
+  birdId: string;
+  textObjId: string;
+  commandSetId: string;
+  defaultText: string;
+  defaultLines: string[];
+  defaultTarget: 'Budaya yang Benar' | 'Budaya yang Salah';
+  defaultTargetId: '6YRB5UIjNas' | '5uLET0cr0nZ';
+  defaultPoints: number;
+  topic: string;
+  imageUrl: string;
+}
+
+export const GARUDA_DROP_TARGETS = {
+  BENAR_ID: '6YRB5UIjNas' as const,
+  SALAH_ID: '5uLET0cr0nZ' as const,
+  BENAR_LABEL: 'Budaya yang Benar' as const,
+  SALAH_LABEL: 'Budaya yang Salah' as const,
+  BENAR_COMMANDSET: 'commandset-341',
+  SALAH_COMMANDSET: 'commandset-345',
+};
+
+/**
+ * Complete, audited catalog of all 10 Draggable Bird Questions on Slide 40 (`6G1VrKuOhCw` — Game Anak Garuda).
+ * Extracted directly from `html5/data/js/6G1VrKuOhCw.js` and `html5/data/js/paths.js`.
+ */
+export const GARUDA_BIRD_QUESTIONS: GarudaBirdQuestionSpec[] = [
+  {
+    questionNumber: 1,
+    birdId: '6XfIWrI4Giy',
+    textObjId: '6PmmLlA3BUm',
+    commandSetId: 'commandset-349',
+    defaultText:
+      'saya harus menghargai ketika orang lain berbicara bahasa daerahnya',
+    defaultLines: [
+      'saya harus menghargai ',
+      'ketika orang lain berbicara ',
+      'bahasa daerahnya',
+    ],
+    defaultTarget: 'Budaya yang Benar',
+    defaultTargetId: '6YRB5UIjNas',
+    defaultPoints: 10,
+    topic: 'Sikap Bahasa Daerah',
+    imageUrl: 'mobile/6Q69tvGOis4.gif',
+  },
+  {
+    questionNumber: 2,
+    birdId: '6JvyeweLFyt',
+    textObjId: '5h0p9KUFVsV',
+    commandSetId: 'commandset-353',
+    defaultText:
+      'tidak suka alat musik gamelan karena berisik di telinga saya',
+    defaultLines: [
+      'tidak suka alat musik ',
+      'gamelan karena berisik di ',
+      'telinga saya',
+    ],
+    defaultTarget: 'Budaya yang Salah',
+    defaultTargetId: '5uLET0cr0nZ',
+    defaultPoints: 10,
+    topic: 'Sikap Alat Musik Daerah',
+    imageUrl: 'mobile/6Q69tvGOis4.gif',
+  },
+  {
+    questionNumber: 3,
+    birdId: '6limMUc3hxJ',
+    textObjId: '5fdyc47zgAM',
+    commandSetId: 'commandset-356',
+    defaultText: 'menjaga pakaian adat yang kita miliki',
+    defaultLines: ['menjaga pakaian adat yang ', 'kita miliki'],
+    defaultTarget: 'Budaya yang Benar',
+    defaultTargetId: '6YRB5UIjNas',
+    defaultPoints: 10,
+    topic: 'Sikap Pakaian Adat',
+    imageUrl: 'mobile/6Q69tvGOis4.gif',
+  },
+  {
+    questionNumber: 4,
+    birdId: '6jWyZbf56OG',
+    textObjId: '6nUqJmLjuQl',
+    commandSetId: 'commandset-359',
+    defaultText: 'Bangga terhadap keberagaman yang ada di Indonesia',
+    defaultLines: ['Bangga terhadap ', 'keberagaman yang ada di ', 'Indonesia'],
+    defaultTarget: 'Budaya yang Benar',
+    defaultTargetId: '6YRB5UIjNas',
+    defaultPoints: 10,
+    topic: 'Kebanggaan Keberagaman',
+    imageUrl: 'mobile/6Q69tvGOis4.gif',
+  },
+  {
+    questionNumber: 5,
+    birdId: '667DkO0X4Ap',
+    textObjId: '6U30Zh8t5Tk',
+    commandSetId: 'commandset-361',
+    defaultText: 'tidak mau tau senjata tradisional daerah lain',
+    defaultLines: ['tidak mau tau senjata ', 'tradisional daerah lain'],
+    defaultTarget: 'Budaya yang Salah',
+    defaultTargetId: '5uLET0cr0nZ',
+    defaultPoints: 10,
+    topic: 'Sikap Senjata Tradisional',
+    imageUrl: 'mobile/6Q69tvGOis4.gif',
+  },
+  {
+    questionNumber: 6,
+    birdId: '5jJyJQ5Uht8',
+    textObjId: '6oPQdY3JV4d',
+    commandSetId: 'commandset-363',
+    defaultText: 'keragaman budaya dapat memecah belah persatuan Indonesia',
+    defaultLines: [
+      'keragaman budaya dapat ',
+      'memecah belah persatuan ',
+      'Indonesia',
+    ],
+    defaultTarget: 'Budaya yang Salah',
+    defaultTargetId: '5uLET0cr0nZ',
+    defaultPoints: 10,
+    topic: 'Persatuan & Kesatuan',
+    imageUrl: 'mobile/6Q69tvGOis4.gif',
+  },
+  {
+    questionNumber: 7,
+    birdId: '6P6IRWjp98P',
+    textObjId: '5ZZO56PNDaL',
+    commandSetId: 'commandset-364',
+    defaultText: 'tidak suka mendengar musik dari daerah lain',
+    defaultLines: ['tidak suka mendengar ', 'musik dari daerah lain'],
+    defaultTarget: 'Budaya yang Salah',
+    defaultTargetId: '5uLET0cr0nZ',
+    defaultPoints: 10,
+    topic: 'Sikap Lagu & Musik Daerah',
+    imageUrl: 'mobile/6Q69tvGOis4.gif',
+  },
+  {
+    questionNumber: 8,
+    birdId: '5prOTedzzbR',
+    textObjId: '6l3BVdcEP3S',
+    commandSetId: 'commandset-367',
+    defaultText: 'keragaman budaya menjadi daya tarik wisata Indonesia',
+    defaultLines: [
+      'keragaman budaya menjadi ',
+      'daya tarik wisata Indonesia',
+    ],
+    defaultTarget: 'Budaya yang Benar',
+    defaultTargetId: '6YRB5UIjNas',
+    defaultPoints: 10,
+    topic: 'Daya Tarik Budaya',
+    imageUrl: 'mobile/6Q69tvGOis4.gif',
+  },
+  {
+    questionNumber: 9,
+    birdId: '6Tz1C4dfw77',
+    textObjId: '6qAvA99AbtK',
+    commandSetId: 'commandset-369',
+    defaultText: 'mau belajar tarian daerah lain',
+    defaultLines: ['mau belajar tarian daerah ', 'lain'],
+    defaultTarget: 'Budaya yang Benar',
+    defaultTargetId: '6YRB5UIjNas',
+    defaultPoints: 10,
+    topic: 'Sikap Tari Tradisional',
+    imageUrl: 'mobile/6Q69tvGOis4.gif',
+  },
+  {
+    questionNumber: 10,
+    birdId: '69rLgopor0f',
+    textObjId: '5smqyHWpI8t',
+    commandSetId: 'commandset-370',
+    defaultText: 'rumah adat saya lebih bagus daripada rumah adat daerah lain',
+    defaultLines: [
+      'rumah adat saya lebih bagus ',
+      'daripada rumah adat daerah ',
+      'lain',
+    ],
+    defaultTarget: 'Budaya yang Salah',
+    defaultTargetId: '5uLET0cr0nZ',
+    defaultPoints: 10,
+    topic: 'Sikap Rumah Adat',
+    imageUrl: 'mobile/6Q69tvGOis4.gif',
+  },
+];
+
+/**
+ * Preset button images available in Starla Budaya for creating Image Buttons
+ * (e.g. Tombol Navigasi 360° Budaya or Tombol Materi).
+ */
+export const STARLA_BUTTON_PRESETS: Array<{
+  id: string;
+  label: string;
+  imageUrl: string;
+}> = [
+  {
+    id: 'btn-360-icon',
+    label: 'Ikon Navigasi / Tur 360°',
+    imageUrl: 'mobile/5dCAlHC5W8Z.png',
+  },
+  {
+    id: 'btn-starla-char',
+    label: 'Karakter Starla Budaya',
+    imageUrl: 'mobile/5hv8C0oRfrb.png',
+  },
+  {
+    id: 'btn-garuda-badge',
+    label: 'Lencana Anak Garuda',
+    imageUrl: 'mobile/6Hxt2bPxv63.png',
+  },
+  {
+    id: 'btn-bird-anim',
+    label: 'Animasi Burung Starla',
+    imageUrl: 'mobile/6Q69tvGOis4.gif',
+  },
+  {
+    id: 'btn-nusantara-1',
+    label: 'Ikon Rumah & Adat',
+    imageUrl: 'mobile/5r8KdQdV9SH.png',
+  },
+  {
+    id: 'btn-nusantara-2',
+    label: 'Ikon Pakaian Budaya',
+    imageUrl: 'mobile/62oB2J2cBdW.png',
+  },
+];
+
 /**
  * Complete, audited catalog of all 43 Articulate Storyline slides in Starla Budaya.
- * Classification:
- * - 'materi': 17 pure cultural learning slides (Definisi Budaya, 7 Topik Budaya + 7 Cara Menghargai, 2 Komik Cerita Pengantar)
- * - 'tur360': Slide 8 (Tur Virtual 360° Budaya WebObject)
- * - 'gim': Slides 4, 5, 6 (Tebak Budaya) & Slide 40 (Drag & Drop Anak Garuda)
- * - 'kuis': Slides 25–34 (10 Soal Evaluasi Pilihan Ganda)
- * - 'pembuka': Slides 1, 2, 3, 7 (Video Opening, Login, Sambutan Starla, Video Sinema)
- * - 'menu': Slides 36, 43 (Menu Utama & Menu Materi)
- * - 'hasil': Slides 24, 35, 37, 38, 41 (Apresiasi, Sertifikat Skor, Refleksi, Profil Pengembang)
  */
 export const SLIDE_EXACT_META: Record<string, SlideSmartMeta> = {
   '6AR4SV4ZYat': {
@@ -66,7 +281,7 @@ export const SLIDE_EXACT_META: Record<string, SlideSmartMeta> = {
     subTopic: 'Pembuka & Pengenalan',
     smartSummary:
       'Tayangan video animasi pembuka (Trailer Starla Budaya) sebelum masuk ke halaman login siswa.',
-    backgroundUrl: 'story_content/poster_5fW9LQF7to8_video_6nPjLwNxeE5_22_56_1280x720.jpg',
+    backgroundUrl: 'mobile/poster_5fW9LQF7to8_video_6nPjLwNxeE5_22_56_1280x720.jpg',
   },
   '5ml7jyaiXGc': {
     slideId: '5ml7jyaiXGc',
@@ -126,7 +341,7 @@ export const SLIDE_EXACT_META: Record<string, SlideSmartMeta> = {
     subTopic: 'Sinema Edukasi',
     smartSummary:
       'Tayangan video cerita animasi tentang indahnya keberagaman budaya di lingkungan sekolah dan masyarakat.',
-    backgroundUrl: 'story_content/poster_6IvTTb86pVv_video_5gKzK4lbTf6_22_56_1280x720.jpg',
+    backgroundUrl: 'mobile/poster_6IvTTb86pVv_video_5gKzK4lbTf6_22_56_1280x720.jpg',
   },
   '5jTlwgcUi8o': {
     slideId: '5jTlwgcUi8o',
@@ -137,6 +352,7 @@ export const SLIDE_EXACT_META: Record<string, SlideSmartMeta> = {
     smartSummary:
       'Penjelajahan panorama interaktif 360° Budaya Nusantara melalui tautan embed web interaktif.',
     backgroundUrl: 'mobile/Slide5znCNCeGBCx.jpg',
+    webObjectUrl: 'https://faryzt.github.io/starla-360/',
   },
   '6AtIwHwQnjq': {
     slideId: '6AtIwHwQnjq',
@@ -482,7 +698,7 @@ export const SLIDE_EXACT_META: Record<string, SlideSmartMeta> = {
     category: 'gim',
     subTopic: 'Gim Drag & Drop',
     smartSummary:
-      'Permainan mengelompokkan perilaku menghargai budaya (Budaya yang Benar vs Budaya yang Salah) bersama karakter Anak Garuda.',
+      'Permainan mengelompokkan 10 pernyataan sikap menghargai budaya (Budaya yang Benar vs Budaya yang Salah) bersama karakter Anak Garuda.',
     backgroundUrl: 'mobile/6PFU9CSOUPJ.gif',
   },
   '6WIqLhHr1Cm': {
@@ -546,6 +762,48 @@ export function getSmartSlideMeta(
           ? cleanInstructions.join(' ')
           : known.smartSummary,
       backgroundUrl: slide?.backgroundUrl || known.backgroundUrl,
+      webObjectUrl: slide?.webObjectUrl || known.webObjectUrl || null,
+    };
+  }
+
+  // Check if this custom slide is a 360° Budaya slide
+  const isCustom360 =
+    slide?.customCategory === 'tur360' ||
+    Boolean(slide?.webObjectUrl) ||
+    slideId.startsWith('tur360_') ||
+    /360/i.test(rawTitle);
+
+  if (isCustom360) {
+    return {
+      slideId,
+      slideNumber: slide?.slideNumber || fallbackIndex + 1,
+      smartTitle: hasCustomEditedTitle
+        ? rawTitle
+        : `Eksplorasi Tur Virtual 360° Budaya #${fallbackIndex + 1}`,
+      category: 'tur360',
+      subTopic: 'Tur Virtual 360°',
+      smartSummary:
+        cleanInstructions.join(' ') ||
+        `Penjelajahan panorama interaktif 360° Budaya Nusantara (${slide?.webObjectUrl || 'https://faryzt.github.io/starla-360/'}).`,
+      backgroundUrl: slide?.backgroundUrl || 'mobile/Slide5znCNCeGBCx.jpg',
+      webObjectUrl: slide?.webObjectUrl || 'https://faryzt.github.io/starla-360/',
+    };
+  }
+
+  if (slide?.quizQuestion || slide?.customCategory === 'kuis') {
+    return {
+      slideId,
+      slideNumber: slide?.slideNumber || fallbackIndex + 1,
+      smartTitle: hasCustomEditedTitle
+        ? rawTitle
+        : `Kuis Budaya Tambahan #${fallbackIndex + 1}`,
+      category: 'kuis',
+      subTopic: 'Evaluasi Kuis Tambahan',
+      smartSummary:
+        slide?.quizQuestion?.questionText ||
+        cleanInstructions.join(' ') ||
+        'Soal evaluasi pemahaman keragaman budaya.',
+      backgroundUrl: slide?.backgroundUrl || 'mobile/Slide5WPRbcJDCqY.jpg',
     };
   }
 
@@ -556,7 +814,7 @@ export function getSmartSlideMeta(
     smartTitle: hasCustomEditedTitle
       ? rawTitle
       : `Materi Budaya Tambahan #${fallbackIndex + 1}`,
-    category: 'materi',
+    category: slide?.customCategory || 'materi',
     subTopic: 'Materi Tambahan',
     materiOrder: 100 + fallbackIndex,
     smartSummary:
@@ -581,7 +839,7 @@ export function getMateriBudayaSlides(
 
   slideOrder.forEach((id, idx) => {
     const sl = slides[id];
-    if (!sl) return;
+    if (!sl || sl.hidden) return;
     const meta = getSmartSlideMeta(id, sl, idx);
     if (meta.category === 'materi') {
       items.push({ slide: sl, meta });
@@ -591,6 +849,25 @@ export function getMateriBudayaSlides(
   items.sort(
     (a, b) => (a.meta.materiOrder ?? 999) - (b.meta.materiOrder ?? 999)
   );
+  return items;
+}
+
+/**
+ * Returns all 360° Budaya slides (Slide 8 + any custom 360° slides added by Admin).
+ */
+export function getTur360Slides(
+  slideOrder: string[],
+  slides: Record<string, SlideContentItem>
+): Array<{ slide: SlideContentItem; meta: SlideSmartMeta }> {
+  const items: Array<{ slide: SlideContentItem; meta: SlideSmartMeta }> = [];
+  slideOrder.forEach((id, idx) => {
+    const sl = slides[id];
+    if (!sl || sl.hidden) return;
+    const meta = getSmartSlideMeta(id, sl, idx);
+    if (meta.category === 'tur360') {
+      items.push({ slide: sl, meta });
+    }
+  });
   return items;
 }
 
@@ -610,7 +887,6 @@ function parseProvideDataPayload(rawJs: string): any {
     const fn = new Function('window', rawJs);
     fn(fakeWindow);
   } catch {
-    // Fallback substring parse if needed
     const start = rawJs.indexOf('{');
     const end = rawJs.lastIndexOf('}');
     if (start >= 0 && end > start) {
@@ -621,9 +897,10 @@ function parseProvideDataPayload(rawJs: string): any {
 }
 
 export async function loadExactSlideStageData(
-  slideId: string
+  slideId: string,
+  customSlide?: SlideContentItem
 ): Promise<ExactSlideRuntimeData | null> {
-  if (cachedSlideRuntime[slideId]) {
+  if (cachedSlideRuntime[slideId] && !customSlide?.webObjectUrl) {
     return cachedSlideRuntime[slideId];
   }
 
@@ -650,6 +927,59 @@ export async function loadExactSlideStageData(
       }
     }
 
+    // If this is a custom 360° Budaya slide added by Admin (no static .js file in html5/data/js),
+    // return an exact 1280x720 WebObject + Back Button stage identical to Slide 8 (5jTlwgcUi8o)
+    if (
+      !SLIDE_EXACT_META[slideId] &&
+      (customSlide?.customCategory === 'tur360' ||
+        customSlide?.webObjectUrl ||
+        slideId.startsWith('tur360_'))
+    ) {
+      const embedUrl =
+        customSlide?.webObjectUrl || 'https://faryzt.github.io/starla-360/';
+      return {
+        slideId,
+        width: 1280,
+        height: 720,
+        backgroundUrl: customSlide?.backgroundUrl || 'mobile/Slide5znCNCeGBCx.jpg',
+        objects: [
+          {
+            id: `${slideId}_webobj`,
+            kind: 'webobject',
+            xPos: 0,
+            yPos: 0,
+            width: 1280,
+            height: 720,
+            depth: 1,
+            imageUrl: null,
+            shapeCommandSetId: null,
+            textCommandSetId: null,
+            altText: '360 Budaya Embed',
+            webUrl: embedUrl,
+            videoUrl: null,
+            posterUrl: null,
+          },
+          {
+            id: `${slideId}_back_btn`,
+            kind: 'vectorshape',
+            xPos: 1126,
+            yPos: 21,
+            width: 69,
+            height: 67,
+            depth: 2,
+            imageUrl: 'mobile/5dCAlHC5W8Z.png',
+            shapeCommandSetId: null,
+            textCommandSetId: null,
+            altText: 'Tombol Kembali ke Menu',
+            webUrl: null,
+            videoUrl: null,
+            posterUrl: null,
+          },
+        ],
+        pathsLib: cachedPathsLib || {},
+      };
+    }
+
     const slideRes = await fetch(`/html5/data/js/${slideId}.js`);
     if (!slideRes.ok) return null;
     const slideRaw = await slideRes.text();
@@ -657,7 +987,7 @@ export async function loadExactSlideStageData(
     if (!sData) return null;
 
     const bgAssetId = sData.background?.imagedata?.assetId;
-    let backgroundUrl: string | null =
+    const backgroundUrl: string | null =
       bgAssetId !== undefined && cachedAssetLib?.[bgAssetId]?.url
         ? cachedAssetLib[bgAssetId].url!
         : SLIDE_EXACT_META[slideId]?.backgroundUrl || null;
@@ -668,9 +998,13 @@ export async function loadExactSlideStageData(
 
     const objects: ExactStageObject[] = [];
 
-    const collectObjects = (rawObjs: any[], offsetX = 0, offsetY = 0) => {
+    const collectObjects = (
+      rawObjs: any[],
+      offsetX = 0,
+      offsetY = 0,
+      parentDepth = 0
+    ) => {
       for (const o of rawObjs || []) {
-        // Skip hidden review banners at bottom of quiz slides
         if (
           typeof o.id === 'string' &&
           (o.id.endsWith('_CorrectReview') || o.id.endsWith('_IncorrectReview'))
@@ -682,18 +1016,19 @@ export async function loadExactSlideStageData(
         const yPos = (typeof o.yPos === 'number' ? o.yPos : 0) + offsetY;
         const width = typeof o.width === 'number' ? o.width : 0;
         const height = typeof o.height === 'number' ? o.height : 0;
+        const effDepth =
+          typeof o.depth === 'number' ? o.depth + parentDepth : objects.length + 1;
 
-        // If stategroup or scrollarea or shufflegroup has nested objects, collect them with parent offset
         if (Array.isArray(o.objects) && o.objects.length > 0) {
           if (o.kind === 'stategroup') {
-            // In stategroup, the first child with matching id or first vectorshape is the default visible state
-            const primaryChild =
-              o.objects.find((ch: any) => ch.id === o.id) || o.objects[0];
-            if (primaryChild) {
-              collectObjects([primaryChild], xPos, yPos);
-            }
+            // Collect the primary child (default state) AND any attached objgroup (e.g. speech bubbles + question texts on Slide 40)
+            const visibleChildren = o.objects.filter(
+              (ch: any, idx: number) =>
+                idx === 0 || ch.id === o.id || ch.kind === 'objgroup'
+            );
+            collectObjects(visibleChildren, xPos, yPos, effDepth);
           } else {
-            collectObjects(o.objects, xPos, yPos);
+            collectObjects(o.objects, xPos, yPos, effDepth);
           }
           continue;
         }
@@ -728,11 +1063,11 @@ export async function loadExactSlideStageData(
           if (slideId === '6AR4SV4ZYat') {
             videoUrl = 'story_content/video_6nPjLwNxeE5_22_56_1280x720.mp4';
             posterUrl =
-              'story_content/poster_5fW9LQF7to8_video_6nPjLwNxeE5_22_56_1280x720.jpg';
+              'mobile/poster_5fW9LQF7to8_video_6nPjLwNxeE5_22_56_1280x720.jpg';
           } else if (slideId === '6IgV5Xf2ecV') {
             videoUrl = 'story_content/video_5gKzK4lbTf6_22_56_1280x720.mp4';
             posterUrl =
-              'story_content/poster_6IvTTb86pVv_video_5gKzK4lbTf6_22_56_1280x720.jpg';
+              'mobile/poster_6IvTTb86pVv_video_5gKzK4lbTf6_22_56_1280x720.jpg';
           }
         }
 
@@ -743,7 +1078,7 @@ export async function loadExactSlideStageData(
           yPos,
           width,
           height,
-          depth: typeof o.depth === 'number' ? o.depth : objects.length + 1,
+          depth: effDepth,
           imageUrl,
           shapeCommandSetId,
           textCommandSetId,
