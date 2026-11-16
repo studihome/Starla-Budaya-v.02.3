@@ -1089,5 +1089,57 @@ test('Per-Element Timeline Animation CSS & Direct DOM Element Overrides + Cleanu
   });
 });
 
+test('Audit & Smart Classification: Materi Budaya only contains Materi slides, all 43 slides have smart names, and unused legacy files are removed', async () => {
+  const {
+    SLIDE_EXACT_META,
+    getSmartSlideMeta,
+    getMateriBudayaSlides,
+  } = await import('./utils/slideExactMeta');
 
+  // 1. All 43 slides have exact smart metadata and no "Untitled Slide"
+  assert.equal(Object.keys(SLIDE_EXACT_META).length, 43);
+  for (const slideId of defaultContent.slideOrder) {
+    const meta = getSmartSlideMeta(slideId, defaultContent.slides[slideId]);
+    assert.ok(meta.smartTitle.length > 5);
+    assert.notEqual(meta.smartTitle, 'Untitled Slide');
+    assert.ok(!meta.smartSummary.includes('%_player'));
+  }
 
+  // 2. Materi Budaya filter returns ONLY the 17 pure cultural material slides
+  const materiList = getMateriBudayaSlides(
+    defaultContent.slideOrder,
+    defaultContent.slides
+  );
+  assert.equal(materiList.length, 17);
+  assert.equal(materiList[0].slide.id, '6OrD7bra4Ko');
+  assert.ok(materiList[0].meta.smartTitle.includes('Apa itu Budaya?'));
+
+  const materiIds = new Set(materiList.map((m) => m.slide.id));
+  // Ensure non-materi slides (Login, 360°, Quiz, Drag & Drop, Results) are NOT in Materi Budaya
+  assert.equal(materiIds.has('5ml7jyaiXGc'), false); // Login
+  assert.equal(materiIds.has('5jTlwgcUi8o'), false); // 360° Budaya
+  assert.equal(materiIds.has('6oOWqUyP2WL'), false); // Quiz #1
+  assert.equal(materiIds.has('6G1VrKuOhCw'), false); // Gim Anak Garuda
+  assert.equal(materiIds.has('6ddgVMlBGEg'), false); // Results
+
+  // 3. Verify all 10 unused legacy files are removed
+  const removedFiles = [
+    'src/CanvaStudio.tsx',
+    'src/StarlaAdminStudio.tsx',
+    'src/features/admin/VisualStudioAdmin.tsx',
+    'src/features/admin/AdminDashboard.tsx',
+    'src/features/admin/LivePreviewPane.tsx',
+    'src/features/admin/adminStyles.ts',
+    'src/features/canvas/CanvasStageOverlay.tsx',
+    'src/features/canvas/CanvasPropertyInspector.tsx',
+    'src/features/canvas/EditableWrapper.tsx',
+    'src/types/canvas.ts',
+  ];
+  for (const relPath of removedFiles) {
+    assert.equal(
+      fs.existsSync(path.join(process.cwd(), relPath)),
+      false,
+      `Expected ${relPath} to be deleted`
+    );
+  }
+});
