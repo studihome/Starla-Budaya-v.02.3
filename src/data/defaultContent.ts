@@ -13,6 +13,7 @@ export type CanvasActionType =
   | 'goto-slide'
   | 'play-audio'
   | 'open-popup'
+  | 'embed-popup'
   | 'external-url';
 
 export type CanvasElementType =
@@ -61,6 +62,8 @@ export interface CanvasElement {
   label?: string;
   imageUrl?: string;
   audioUrl?: string;
+  clickSfxUrl?: string;
+  hoverSfxUrl?: string;
   style: {
     backgroundColor?: string;
     textColor?: string;
@@ -85,6 +88,9 @@ export interface CanvasElement {
     popupTitle?: string;
     popupBody?: string;
     popupContent?: string;
+    popupMediaUrl?: string;
+    popupMediaType?: 'iframe' | 'image' | 'video' | 'audio' | 'none';
+    popupAnimation?: CanvasAnimationType;
     externalUrl?: string;
   };
   animation?: CanvasElementAnimation;
@@ -368,8 +374,26 @@ export interface ElementOverrideConfig {
   locked?: boolean;
   zIndex?: number;
   customText?: string;
+  customLabel?: string;
   customImage?: string;
   customAudio?: string;
+  actionType?:
+    | 'default'
+    | 'goto-slide'
+    | 'external-url'
+    | 'open-popup'
+    | 'embed-popup'
+    | 'play-audio';
+  targetSlideId?: string;
+  externalUrl?: string;
+  popupTitle?: string;
+  popupContent?: string;
+  popupMediaUrl?: string;
+  popupMediaType?: 'iframe' | 'image' | 'video' | 'audio' | 'none';
+  popupAnimation?: CanvasAnimationType;
+  clickSfxUrl?: string;
+  hoverSfxUrl?: string;
+  hoverEffect?: CanvasHoverEffect;
   animation?: CanvasElementAnimation;
 }
 
@@ -390,6 +414,13 @@ export interface SlideContentItem {
   resume: boolean;
   backgroundUrl: string | null;
   webObjectUrl?: string | null;
+  copiedFromSlideId?: string | null;
+  backsoundUrl?: string | null;
+  backsoundVolume?: number;
+  backsoundLoop?: boolean;
+  voiceOverUrl?: string | null;
+  voiceOverVolume?: number;
+  voiceOverAutoplay?: boolean;
   customCategory?: 'materi' | 'tur360' | 'gim' | 'kuis' | 'pembuka' | 'menu' | 'hasil';
   instructions: string[];
   texts: SlideTextBlock[];

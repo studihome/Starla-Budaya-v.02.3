@@ -8,6 +8,10 @@ import {
 } from '../../data/defaultContent';
 import { resolveUpdatedContent } from '../../utils/contentRuntimeBridge';
 import { isValidContentSchema } from '../../lib/supabase';
+import {
+  SLIDE_EXACT_META,
+  normalizeSmartEmbedUrl,
+} from '../../utils/slideExactMeta';
 
 export const DEFAULT_ADMIN_PIN = '123456';
 
@@ -140,6 +144,15 @@ export function addSlideItem(
     title: string;
     instructions?: string[];
     backgroundUrl?: string | null;
+    backsoundUrl?: string | null;
+    backsoundVolume?: number;
+    backsoundLoop?: boolean;
+    voiceOverUrl?: string | null;
+    voiceOverVolume?: number;
+    voiceOverAutoplay?: boolean;
+    copiedFromSlideId?: string | null;
+    customCategory?: SlideContentItem['customCategory'];
+    webObjectUrl?: string | null;
   }
 ): { nextSchema: ContentSchema; createdSlideId: string } {
   const cleanTitle = input.title.trim() || 'Slide Baru';
@@ -170,6 +183,17 @@ export function addSlideItem(
   };
 
   const newSlideNumber = schema.slideOrder.length + 1;
+  const has360Intent =
+    input.customCategory === 'tur360' ||
+    Boolean(input.webObjectUrl && input.webObjectUrl.trim()) ||
+    slideId.startsWith('tur360_');
+  const resolvedWebObjectUrl = has360Intent
+    ? normalizeSmartEmbedUrl(
+        input.webObjectUrl,
+        'https://faryzt.github.io/starla-360/'
+      )
+    : input.webObjectUrl ?? null;
+
   const newSlide: SlideContentItem = {
     id: slideId,
     slideNumber: newSlideNumber,
@@ -182,7 +206,17 @@ export function addSlideItem(
     backgroundUrl:
       input.backgroundUrl !== undefined
         ? input.backgroundUrl
-        : 'mobile/Slide5WPRbcJDCqY.jpg',
+        : 'mobile/Slide5znCNCeGBCx.jpg',
+    webObjectUrl: resolvedWebObjectUrl,
+    copiedFromSlideId: input.copiedFromSlideId ?? null,
+    backsoundUrl: input.backsoundUrl ?? null,
+    backsoundVolume: input.backsoundVolume ?? 0.45,
+    backsoundLoop: input.backsoundLoop ?? true,
+    voiceOverUrl: input.voiceOverUrl ?? null,
+    voiceOverVolume: input.voiceOverVolume ?? 0.9,
+    voiceOverAutoplay: input.voiceOverAutoplay ?? true,
+    customCategory:
+      input.customCategory ?? (has360Intent ? 'tur360' : 'materi'),
     instructions,
     texts: [textBlock],
     audios: [],
@@ -190,6 +224,9 @@ export function addSlideItem(
     videos: [],
     quizQuestion: null,
     hidden: false,
+    elementOverrides: {},
+    hiddenElementIds: [],
+    canvasElements: [],
   };
 
   const nextSlideOrder = [...schema.slideOrder, slideId];
@@ -211,6 +248,129 @@ export function addSlideItem(
   };
 
   return { nextSchema, createdSlideId: slideId };
+}
+
+/**
+ * Menyalin (Copy / Duplikat) dari slide yang sudah ada menjadi slide baru yang mandiri,
+ * termasuk seluruh objek asli (`copiedFromSlideId`), latar belakang, posisi elemen (`elementOverrides`),
+ * tombol kustom (`canvasElements`), tautan embed 360° (`webObjectUrl`), backsound, dan voice over.
+ */
+export function copySlideItem(
+  schema: ContentSchema,
+  sourceSlideId: string,
+  overrides?: {
+    id?: string;
+    title?: string;
+    backgroundUrl?: string | null;
+    backsoundUrl?: string | null;
+    voiceOverUrl?: string | null;
+    webObjectUrl?: string | null;
+    customCategory?: SlideContentItem['customCategory'];
+  }
+): { nextSchema: ContentSchema; createdSlideId: string } {
+  const sourceSlide = schema.slides[sourceSlideId];
+  if (!sourceSlide) {
+    return addSlideItem(schema, {
+      id: overrides?.id,
+      title: overrides?.title || 'Slide Salinan Baru',
+      backgroundUrl: overrides?.backgroundUrl,
+      backsoundUrl: overrides?.backsoundUrl,
+      voiceOverUrl: overrides?.voiceOverUrl,
+      webObjectUrl: overrides?.webObjectUrl,
+      customCategory: overrides?.customCategory,
+    });
+  }
+
+  const rawId =
+    overrides?.id?.trim() ||
+    `copy_${sourceSlideId}_${Date.now().toString(36).slice(-4)}`;
+  const createdSlideId = schema.slides[rawId] ? `${rawId}_dup` : rawId;
+  const newSlideNumber = schema.slideOrder.length + 1;
+
+  const clonedCanvasElements = (sourceSlide.canvasElements || []).map(
+    (el, idx) => ({
+      ...el,
+      id: `ce_${createdSlideId}_${idx}_${Math.random().toString(36).slice(2, 5)}`,
+      style: { ...el.style },
+      action: { ...el.action },
+    })
+  );
+
+  const clonedOverrides: NonNullable<SlideContentItem['elementOverrides']> = {};
+  if (sourceSlide.elementOverrides) {
+    for (const [k, v] of Object.entries(sourceSlide.elementOverrides)) {
+      clonedOverrides[k] = { ...v };
+    }
+  }
+
+  const effectiveSourceMeta =
+    SLIDE_EXACT_META[sourceSlide.copiedFromSlideId || sourceSlideId];
+  const rawInheritedWebUrl =
+    overrides?.webObjectUrl !== undefined
+      ? overrides.webObjectUrl
+      : sourceSlide.webObjectUrl || effectiveSourceMeta?.webObjectUrl || null;
+  const resolvedCopyWebUrl = rawInheritedWebUrl
+    ? normalizeSmartEmbedUrl(rawInheritedWebUrl)
+    : null;
+  const isSource360 =
+    sourceSlideId === '5jTlwgcUi8o' ||
+    sourceSlide.copiedFromSlideId === '5jTlwgcUi8o' ||
+    sourceSlide.customCategory === 'tur360' ||
+    effectiveSourceMeta?.category === 'tur360' ||
+    Boolean(resolvedCopyWebUrl);
+
+  const newSlide: SlideContentItem = {
+    ...sourceSlide,
+    id: createdSlideId,
+    slideNumber: newSlideNumber,
+    title:
+      overrides?.title?.trim() || `${sourceSlide.title} (Salinan)`,
+    lmsId: `Slide${newSlideNumber}`,
+    copiedFromSlideId: sourceSlide.copiedFromSlideId || sourceSlideId,
+    backgroundUrl:
+      overrides?.backgroundUrl !== undefined
+        ? overrides.backgroundUrl
+        : sourceSlide.backgroundUrl || effectiveSourceMeta?.backgroundUrl || null,
+    webObjectUrl: resolvedCopyWebUrl,
+    backsoundUrl:
+      overrides?.backsoundUrl !== undefined
+        ? overrides.backsoundUrl
+        : sourceSlide.backsoundUrl ?? null,
+    voiceOverUrl:
+      overrides?.voiceOverUrl !== undefined
+        ? overrides.voiceOverUrl
+        : sourceSlide.voiceOverUrl ??
+          sourceSlide.audios?.[0]?.url ??
+          null,
+    customCategory:
+      overrides?.customCategory ??
+      (isSource360 ? 'tur360' : sourceSlide.customCategory ?? 'materi'),
+    instructions: [...(sourceSlide.instructions || [])],
+    texts: (sourceSlide.texts || []).map((t) => ({
+      ...t,
+      lines: [...t.lines],
+    })),
+    audios: (sourceSlide.audios || []).map((a) => ({ ...a })),
+    images: (sourceSlide.images || []).map((im) => ({ ...im })),
+    videos: (sourceSlide.videos || []).map((v) => ({ ...v })),
+    elementOverrides: clonedOverrides,
+    hiddenElementIds: [...(sourceSlide.hiddenElementIds || [])],
+    canvasElements: clonedCanvasElements,
+    hidden: false,
+  };
+
+  const nextSlideOrder = [...schema.slideOrder, createdSlideId];
+  return {
+    nextSchema: {
+      ...schema,
+      slideOrder: nextSlideOrder,
+      slides: {
+        ...schema.slides,
+        [createdSlideId]: newSlide,
+      },
+    },
+    createdSlideId,
+  };
 }
 
 /**

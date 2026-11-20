@@ -1085,4 +1085,96 @@ export function commitTransientHistoryState<T>(
   };
 }
 
+// ============================================================================
+// DEBOUNCED CANVAS STATE PERSISTENCE & LIVE DOM SYNCHRONIZATION ENGINE
+// ============================================================================
+export const CANVAS_SAVE_DEBOUNCE_MS = 180;
+
+export interface CanvasStateSaveDebouncer<T> {
+  /**
+   * Menjadwalkan penyimpanan state / sinkronisasi DOM secara debounced.
+   * Selama pengguna terus melakukan drag-and-drop atau mengetik properti elemen,
+   * eksekusi berat (localStorage serialization & live DOM sync) digabung menjadi
+   * satu eksekusi akhir sambil menjaga state terakhir 100% sinkron.
+   */
+  schedule: (payload: T, commitFn: (latestPayload: T) => void) => void;
+  /**
+   * Mengeksekusi segera (flush) penyimpanan/sinkronisasi yang masih tertunda
+   * untuk menjamin tidak ada perubahan yang hilang saat pindah tab, unmount, atau cloud save.
+   */
+  flush: () => void;
+  /**
+   * Membatalkan timer debounce yang sedang berjalan tanpa mengeksekusi callback.
+   */
+  cancel: () => void;
+  /**
+   * Mengembalikan true jika masih ada proses simpan yang menunggu timer debounce.
+   */
+  isPending: () => boolean;
+}
+
+export function createCanvasStateSaveDebouncer<T>(
+  delayMs: number = CANVAS_SAVE_DEBOUNCE_MS
+): CanvasStateSaveDebouncer<T> {
+  let timerId: ReturnType<typeof setTimeout> | null = null;
+  let pendingPayload: T | null = null;
+  let pendingCommitFn: ((latestPayload: T) => void) | null = null;
+  let hasPending = false;
+
+  const flush = () => {
+    if (timerId !== null) {
+      clearTimeout(timerId);
+      timerId = null;
+    }
+    if (hasPending && pendingCommitFn && pendingPayload !== null) {
+      const fn = pendingCommitFn;
+      const payload = pendingPayload;
+      hasPending = false;
+      pendingPayload = null;
+      pendingCommitFn = null;
+      fn(payload);
+    }
+  };
+
+  const cancel = () => {
+    if (timerId !== null) {
+      clearTimeout(timerId);
+      timerId = null;
+    }
+    hasPending = false;
+    pendingPayload = null;
+    pendingCommitFn = null;
+  };
+
+  const schedule = (payload: T, commitFn: (latestPayload: T) => void) => {
+    pendingPayload = payload;
+    pendingCommitFn = commitFn;
+    hasPending = true;
+
+    if (timerId !== null) {
+      clearTimeout(timerId);
+    }
+
+    timerId = setTimeout(() => {
+      timerId = null;
+      if (hasPending && pendingCommitFn && pendingPayload !== null) {
+        const fn = pendingCommitFn;
+        const latest = pendingPayload;
+        hasPending = false;
+        pendingPayload = null;
+        pendingCommitFn = null;
+        fn(latest);
+      }
+    }, Math.max(0, delayMs));
+  };
+
+  return {
+    schedule,
+    flush,
+    cancel,
+    isPending: () => hasPending,
+  };
+}
+
+
 

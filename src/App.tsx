@@ -107,19 +107,27 @@ export function MainPublicApp(): React.ReactElement {
   return <StarlaPlayer />;
 }
 
+export const LazyAdminDashboard = React.lazy(() =>
+  import('./AdminDashboard').then((mod) => ({
+    default: mod.AdminDashboard,
+  }))
+);
+
 /**
  * Root Application (`App`).
  * Membungkus `<MainPublicApp />` di dalam `<AdminDashboard>` dan `<ContentProvider>`
- * dengan jaminan 100% Zero-Regression pada tampilan publik dan audio.
+ * dengan sistem Lazy Loading & Suspense serta jaminan 100% Zero-Regression pada tampilan publik dan audio.
  */
 export default function App({
   initialSupabaseContent = null,
 }: AppProps = {}): React.ReactElement {
   return (
     <ContentProvider initialSupabaseContent={initialSupabaseContent}>
-      <AdminDashboard>
-        <MainPublicApp />
-      </AdminDashboard>
+      < React.Suspense fallback={null}>
+        <AdminDashboard>
+          <MainPublicApp />
+        </AdminDashboard>
+      </React.Suspense>
     </ContentProvider>
   );
 }

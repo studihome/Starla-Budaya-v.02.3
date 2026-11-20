@@ -229,8 +229,58 @@ export const GARUDA_BIRD_QUESTIONS: GarudaBirdQuestionSpec[] = [
 ];
 
 /**
- * Preset button images available in Starla Budaya for creating Image Buttons
- * (e.g. Tombol Navigasi 360° Budaya or Tombol Materi).
+ * Smartly normalizes any 360° or web embed input (raw URL, domain without https://,
+ * pasted <iframe src="..."> tag, or YouTube watch/short link) into a valid embeddable URL
+ * identical in behavior to Slide 8 (5jTlwgcUi8o).
+ */
+export function normalizeSmartEmbedUrl(
+  rawInput?: string | null,
+  fallbackUrl = 'https://faryzt.github.io/starla-360/'
+): string {
+  const trimmed = (rawInput || '').trim();
+  if (!trimmed) return fallbackUrl;
+
+  // 1. If admin pasted a full <iframe ... src="..."> HTML snippet, extract src attribute
+  if (trimmed.toLowerCase().includes('<iframe')) {
+    const srcMatch = trimmed.match(/src\s*=\s*["']([^"']+)["']/i);
+    if (srcMatch?.[1]) {
+      return normalizeSmartEmbedUrl(srcMatch[1], fallbackUrl);
+    }
+  }
+
+  let url = trimmed;
+
+  // 2. If domain was typed without protocol (e.g. faryzt.github.io/starla-360/ or www.example.com)
+  if (
+    !/^(https?:\/\/|\/|data:|blob:|mobile\/|story_content\/|html5\/)/i.test(url)
+  ) {
+    if (url.startsWith('//')) {
+      url = `https:${url}`;
+    } else if (/^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(url)) {
+      url = `https://${url}`;
+    }
+  }
+
+  // 3. Convert YouTube watch or youtu.be links into embeddable /embed/ URLs
+  const ytWatchMatch = url.match(
+    /^https?:\/\/(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{6,})/i
+  );
+  if (ytWatchMatch?.[1]) {
+    return `https://www.youtube.com/embed/${ytWatchMatch[1]}`;
+  }
+  const ytShortMatch = url.match(
+    /^https?:\/\/(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{6,})/i
+  );
+  if (ytShortMatch?.[1]) {
+    return `https://www.youtube.com/embed/${ytShortMatch[1]}`;
+  }
+
+  return url;
+}
+
+/**
+ * Preset button images available in Starla Budaya for creating or replacing Image Buttons
+ * (e.g. Tombol Navigasi 360° Budaya, Tombol Kembali Slide 8, or Tombol Materi).
  */
 export const STARLA_BUTTON_PRESETS: Array<{
   id: string;
@@ -241,6 +291,11 @@ export const STARLA_BUTTON_PRESETS: Array<{
     id: 'btn-360-icon',
     label: 'Ikon Navigasi / Tur 360°',
     imageUrl: 'mobile/5dCAlHC5W8Z.png',
+  },
+  {
+    id: 'btn-slide8-back',
+    label: 'Tombol Kembali Asli (Slide 8 / 360°)',
+    imageUrl: 'mobile/6UTk9YJ1Rv7.png',
   },
   {
     id: 'btn-starla-char',
@@ -268,6 +323,366 @@ export const STARLA_BUTTON_PRESETS: Array<{
     imageUrl: 'mobile/62oB2J2cBdW.png',
   },
 ];
+
+/**
+ * Database Pilihan Backsound Musik Latar Starla Budaya Nusantara (diambil dari aset asli story_content/).
+ */
+export interface AudioCatalogOption {
+  id: string;
+  label: string;
+  url: string;
+  category: 'backsound' | 'voiceover' | 'sfx';
+  durationLabel: string;
+}
+
+export const STARLA_BACKSOUND_CATALOG: AudioCatalogOption[] = [
+  {
+    id: 'bs-harmoni-utama',
+    label: 'Harmoni Nusantara Utama (Musik Ceria Starla)',
+    url: 'story_content/6fP6CzyqyMk_44100_56_0.mp3',
+    category: 'backsound',
+    durationLabel: '02:13',
+  },
+  {
+    id: 'bs-eksplorasi-budaya',
+    label: 'Alunan Eksplorasi Budaya Indonesia (Musik Materi)',
+    url: 'story_content/5kRUm7Nir2B_44100_56_0.mp3',
+    category: 'backsound',
+    durationLabel: '01:03',
+  },
+  {
+    id: 'bs-iringan-tradisional',
+    label: 'Iringan Musik Tradisional Nusantara',
+    url: 'story_content/5ZYCAe9VtmT_44100_56_0.mp3',
+    category: 'backsound',
+    durationLabel: '00:20',
+  },
+  {
+    id: 'bs-jingle-petualangan',
+    label: 'Jingle Pembuka Petualangan Budaya',
+    url: 'story_content/6Zh1DGetjr4_44100_56_0.mp3',
+    category: 'backsound',
+    durationLabel: '00:07',
+  },
+  {
+    id: 'bs-melodi-ambient',
+    label: 'Melodi Ambient Halaman Materi',
+    url: 'story_content/6Tk6kUdjse4_44100_56_0.mp3',
+    category: 'backsound',
+    durationLabel: '00:05',
+  },
+];
+
+/**
+ * Database Pilihan Voice Over Narasi Starla Budaya.
+ */
+export const STARLA_VOICEOVER_CATALOG: AudioCatalogOption[] = [
+  {
+    id: 'vo-none',
+    label: 'Tanpa Voice Over Tambahan',
+    url: '',
+    category: 'voiceover',
+    durationLabel: '-',
+  },
+  {
+    id: 'vo-sambutan-starla',
+    label: 'VO Sambutan Selamat Datang di Starla Budaya',
+    url: 'story_content/6k7JPOlasPL_44100_56_0.mp3',
+    category: 'voiceover',
+    durationLabel: 'Narasi',
+  },
+  {
+    id: 'vo-pengantar-budaya',
+    label: 'VO Pengantar Keragaman Budaya Indonesia',
+    url: 'story_content/6ovJchPVZxx_44100_56_0.mp3',
+    category: 'voiceover',
+    durationLabel: '00:10',
+  },
+  {
+    id: 'vo-menghargai-budaya',
+    label: 'VO Cara Menghargai Keragaman Budaya Daerah',
+    url: 'story_content/6apy3oZfWFX_44100_56_0.mp3',
+    category: 'voiceover',
+    durationLabel: '00:12',
+  },
+  {
+    id: 'vo-bahasa-daerah',
+    label: 'VO Eksplorasi Bahasa Daerah Nusantara',
+    url: 'story_content/6Tk6kUdjse4_44100_56_0.mp3',
+    category: 'voiceover',
+    durationLabel: 'Narasi',
+  },
+  {
+    id: 'vo-rumah-adat',
+    label: 'VO Eksplorasi Rumah Adat & Pakaian Adat',
+    url: 'story_content/6Zh1DGetjr4_44100_56_0.mp3',
+    category: 'voiceover',
+    durationLabel: 'Narasi',
+  },
+];
+
+/**
+ * Database Pilihan Sound Efek Tombol UI Terbaik (Kombinasi MP3 Asli Starla + Studio Web Audio Synthesizer).
+ */
+export const STARLA_SFX_CATALOG: AudioCatalogOption[] = [
+  {
+    id: 'sfx-starla-click',
+    label: '✨ Klik Tombol Asli Starla Budaya (Original Pop)',
+    url: 'story_content/6cE4jPpZoR1_44100_56_0.mp3',
+    category: 'sfx',
+    durationLabel: '0.4s',
+  },
+  {
+    id: 'sfx-starla-nav',
+    label: '🔔 Navigasi Slide Starla (Original Chime)',
+    url: 'story_content/6DeuLJzk41Q_44100_56_0.mp3',
+    category: 'sfx',
+    durationLabel: '0.8s',
+  },
+  {
+    id: 'sfx-starla-menu',
+    label: '🎵 Interaksi Menu Starla (Original Tone)',
+    url: 'story_content/5tluWyE6Cdx_44100_56_0.mp3',
+    category: 'sfx',
+    durationLabel: '0.9s',
+  },
+  {
+    id: 'sfx-crystal-click',
+    label: '💎 Studio Crystal Click (Modern UI Crisp)',
+    url: 'sfx:click-crystal',
+    category: 'sfx',
+    durationLabel: 'Instan',
+  },
+  {
+    id: 'sfx-pop-nusantara',
+    label: '🫧 Studio Pop Bubble (Halus & Responsif)',
+    url: 'sfx:pop-nusantara',
+    category: 'sfx',
+    durationLabel: 'Instan',
+  },
+  {
+    id: 'sfx-gamelan-chime',
+    label: '🎶 Studio Gamelan Chime (Nada Pentatonik Emas)',
+    url: 'sfx:chime-gamelan',
+    category: 'sfx',
+    durationLabel: 'Instan',
+  },
+  {
+    id: 'sfx-whoosh-magic',
+    label: '🚀 Studio Whoosh Transisi (Buka Popup / Slide)',
+    url: 'sfx:whoosh-magic',
+    category: 'sfx',
+    durationLabel: 'Instan',
+  },
+  {
+    id: 'sfx-success-fanfare',
+    label: '🏆 Studio Fanfare Berhasil (Kuis / Benar)',
+    url: 'sfx:success-fanfare',
+    category: 'sfx',
+    durationLabel: 'Instan',
+  },
+  {
+    id: 'sfx-hover-soft',
+    label: '🪶 Studio Hover Tick (Efek Sentuh Halus)',
+    url: 'sfx:hover-soft',
+    category: 'sfx',
+    durationLabel: 'Instan',
+  },
+  {
+    id: 'sfx-none',
+    label: '🔇 Tanpa Efek Suara',
+    url: '',
+    category: 'sfx',
+    durationLabel: '-',
+  },
+];
+
+/**
+ * Database Pilihan Background Gambar Slide Bawaan Starla Budaya.
+ */
+export const STARLA_BACKGROUND_PRESETS: Array<{
+  id: string;
+  label: string;
+  imageUrl: string;
+}> = [
+  {
+    id: 'bg-malam-nusantara',
+    label: 'Latar Biru Nusantara (Menu & 360°)',
+    imageUrl: 'mobile/Slide5znCNCeGBCx.jpg',
+  },
+  {
+    id: 'bg-panggung-budaya',
+    label: 'Latar Panggung Budaya Nusantara',
+    imageUrl: 'mobile/Slide6r3TAL6GVOt.jpg',
+  },
+  {
+    id: 'bg-ruang-materi',
+    label: 'Latar Ruang Materi Starla Budaya',
+    imageUrl: 'mobile/Slide6kOcLT0fs6c.png',
+  },
+  {
+    id: 'bg-cerah-eksplorasi',
+    label: 'Latar Cerah Eksplorasi Budaya',
+    imageUrl: 'mobile/5maQz6EtJQu5eRveoLDcvv{Width=1280, Height=720}Light.jpg',
+  },
+  {
+    id: 'bg-langit-garuda',
+    label: 'Latar Petualangan Anak Garuda',
+    imageUrl: 'mobile/5s6NWFwiK9z.png',
+  },
+  {
+    id: 'bg-taman-starla',
+    label: 'Latar Taman Budaya Starla',
+    imageUrl: 'mobile/6Z7ek63QC1F.png',
+  },
+];
+
+let sharedAudioCtx: AudioContext | null = null;
+let currentPreviewAudio: HTMLAudioElement | null = null;
+
+export function stopPreviewAudio(): void {
+  if (currentPreviewAudio) {
+    try {
+      currentPreviewAudio.pause();
+      currentPreviewAudio.currentTime = 0;
+    } catch {
+      // ignore
+    }
+    currentPreviewAudio = null;
+  }
+}
+
+/**
+ * Plays either an MP3/DataURL audio file or a zero-latency Web Audio API synthesized studio sound effect.
+ */
+export function playStudioSoundEffect(
+  sfxUrlOrPreset: string | undefined | null,
+  volume = 0.75
+): HTMLAudioElement | null {
+  if (!sfxUrlOrPreset || sfxUrlOrPreset === 'none' || typeof window === 'undefined') {
+    return null;
+  }
+
+  if (sfxUrlOrPreset.startsWith('sfx:')) {
+    try {
+      const AudioContextCtor =
+        window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextCtor) return null;
+      if (!sharedAudioCtx) {
+        sharedAudioCtx = new AudioContextCtor();
+      }
+      if (sharedAudioCtx.state === 'suspended') {
+        void sharedAudioCtx.resume();
+      }
+      const ctx = sharedAudioCtx;
+      const now = ctx.currentTime;
+      const masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(Math.max(0.05, Math.min(1, volume)), now);
+      masterGain.connect(ctx.destination);
+
+      if (sfxUrlOrPreset === 'sfx:hover-soft') {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(680, now);
+        osc.frequency.exponentialRampToValueAtTime(920, now + 0.045);
+        g.gain.setValueAtTime(0.18, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+        osc.connect(g);
+        g.connect(masterGain);
+        osc.start(now);
+        osc.stop(now + 0.05);
+      } else if (sfxUrlOrPreset === 'sfx:click-crystal') {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(520, now);
+        osc.frequency.exponentialRampToValueAtTime(1240, now + 0.08);
+        g.gain.setValueAtTime(0.45, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+        osc.connect(g);
+        g.connect(masterGain);
+        osc.start(now);
+        osc.stop(now + 0.095);
+      } else if (sfxUrlOrPreset === 'sfx:pop-nusantara') {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(320, now);
+        osc.frequency.exponentialRampToValueAtTime(760, now + 0.11);
+        g.gain.setValueAtTime(0.5, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.connect(g);
+        g.connect(masterGain);
+        osc.start(now);
+        osc.stop(now + 0.125);
+      } else if (sfxUrlOrPreset === 'sfx:chime-gamelan') {
+        // Pentatonic Slendro/Pelog inspired chime chord
+        const freqs = [587.33, 659.25, 880, 1174.66];
+        freqs.forEach((f, idx) => {
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.type = 'sine';
+          const t0 = now + idx * 0.055;
+          osc.frequency.setValueAtTime(f, t0);
+          g.gain.setValueAtTime(0.32, t0);
+          g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.42);
+          osc.connect(g);
+          g.connect(masterGain);
+          osc.start(t0);
+          osc.stop(t0 + 0.44);
+        });
+      } else if (sfxUrlOrPreset === 'sfx:whoosh-magic') {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.18);
+        g.gain.setValueAtTime(0.38, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        osc.connect(g);
+        g.connect(masterGain);
+        osc.start(now);
+        osc.stop(now + 0.21);
+      } else if (sfxUrlOrPreset === 'sfx:success-fanfare') {
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        notes.forEach((f, idx) => {
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.type = 'triangle';
+          const t0 = now + idx * 0.07;
+          osc.frequency.setValueAtTime(f, t0);
+          g.gain.setValueAtTime(0.35, t0);
+          g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.35);
+          osc.connect(g);
+          g.connect(masterGain);
+          osc.start(t0);
+          osc.stop(t0 + 0.36);
+        });
+      }
+    } catch {
+      // ignore Web Audio errors
+    }
+    return null;
+  }
+
+  try {
+    stopPreviewAudio();
+    const normalizedUrl =
+      sfxUrlOrPreset.startsWith('http') ||
+      sfxUrlOrPreset.startsWith('data:') ||
+      sfxUrlOrPreset.startsWith('/')
+        ? sfxUrlOrPreset
+        : `/${sfxUrlOrPreset}`;
+    const audio = new Audio(normalizedUrl);
+    audio.volume = Math.max(0.05, Math.min(1, volume));
+    currentPreviewAudio = audio;
+    void audio.play().catch(() => {});
+    return audio;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Complete, audited catalog of all 43 Articulate Storyline slides in Starla Budaya.
@@ -754,6 +1169,7 @@ export function getSmartSlideMeta(
     );
 
   if (known) {
+    const rawKnownWebUrl = slide?.webObjectUrl || known.webObjectUrl || null;
     return {
       ...known,
       smartTitle: hasCustomEditedTitle ? rawTitle : known.smartTitle,
@@ -762,18 +1178,25 @@ export function getSmartSlideMeta(
           ? cleanInstructions.join(' ')
           : known.smartSummary,
       backgroundUrl: slide?.backgroundUrl || known.backgroundUrl,
-      webObjectUrl: slide?.webObjectUrl || known.webObjectUrl || null,
+      webObjectUrl: rawKnownWebUrl
+        ? normalizeSmartEmbedUrl(rawKnownWebUrl, known.webObjectUrl || 'https://faryzt.github.io/starla-360/')
+        : null,
     };
   }
 
-  // Check if this custom slide is a 360° Budaya slide
+  // Check if this custom slide is a 360° Budaya slide (including copies of Slide 8)
   const isCustom360 =
     slide?.customCategory === 'tur360' ||
+    slide?.copiedFromSlideId === '5jTlwgcUi8o' ||
     Boolean(slide?.webObjectUrl) ||
     slideId.startsWith('tur360_') ||
     /360/i.test(rawTitle);
 
   if (isCustom360) {
+    const normalizedEmbedUrl = normalizeSmartEmbedUrl(
+      slide?.webObjectUrl,
+      'https://faryzt.github.io/starla-360/'
+    );
     return {
       slideId,
       slideNumber: slide?.slideNumber || fallbackIndex + 1,
@@ -784,9 +1207,9 @@ export function getSmartSlideMeta(
       subTopic: 'Tur Virtual 360°',
       smartSummary:
         cleanInstructions.join(' ') ||
-        `Penjelajahan panorama interaktif 360° Budaya Nusantara (${slide?.webObjectUrl || 'https://faryzt.github.io/starla-360/'}).`,
+        `Penjelajahan panorama interaktif 360° Budaya Nusantara (${normalizedEmbedUrl}).`,
       backgroundUrl: slide?.backgroundUrl || 'mobile/Slide5znCNCeGBCx.jpg',
-      webObjectUrl: slide?.webObjectUrl || 'https://faryzt.github.io/starla-360/',
+      webObjectUrl: normalizedEmbedUrl,
     };
   }
 
@@ -871,10 +1294,51 @@ export function getTur360Slides(
   return items;
 }
 
-// In-memory cache for exact Storyline stage rendering in "Desain Slide"
+// Bounded LRU in-memory cache for exact Storyline stage rendering in "Desain Slide"
+// Prevents unbounded RAM growth and allows instant memory release when closing Desain Slide / AdminDashboard
+export const MAX_CACHED_SLIDE_RUNTIMES = 6;
 let cachedAssetLib: Array<{ url?: string }> | null = null;
 let cachedPathsLib: Record<string, any> | null = null;
-const cachedSlideRuntime: Record<string, ExactSlideRuntimeData> = {};
+const cachedSlideRuntimeMap = new Map<string, ExactSlideRuntimeData>();
+
+export function getAdminStageCacheStats(): {
+  cachedSlideCount: number;
+  maxCachedSlides: number;
+  hasAssetLibLoaded: boolean;
+  hasPathsLibLoaded: boolean;
+  cachedSlideIds: string[];
+} {
+  return {
+    cachedSlideCount: cachedSlideRuntimeMap.size,
+    maxCachedSlides: MAX_CACHED_SLIDE_RUNTIMES,
+    hasAssetLibLoaded: cachedAssetLib !== null,
+    hasPathsLibLoaded: cachedPathsLib !== null,
+    cachedSlideIds: Array.from(cachedSlideRuntimeMap.keys()),
+  };
+}
+
+export function releaseAdminStageMemoryCache(keepHeavyLibs = false): void {
+  cachedSlideRuntimeMap.clear();
+  if (!keepHeavyLibs) {
+    cachedAssetLib = null;
+    cachedPathsLib = null;
+  }
+}
+
+function setLruSlideRuntime(
+  slideId: string,
+  data: ExactSlideRuntimeData
+): void {
+  if (cachedSlideRuntimeMap.has(slideId)) {
+    cachedSlideRuntimeMap.delete(slideId);
+  } else if (cachedSlideRuntimeMap.size >= MAX_CACHED_SLIDE_RUNTIMES) {
+    const oldestKey = cachedSlideRuntimeMap.keys().next().value;
+    if (oldestKey) {
+      cachedSlideRuntimeMap.delete(oldestKey);
+    }
+  }
+  cachedSlideRuntimeMap.set(slideId, data);
+}
 
 function parseProvideDataPayload(rawJs: string): any {
   let captured: any = null;
@@ -900,8 +1364,82 @@ export async function loadExactSlideStageData(
   slideId: string,
   customSlide?: SlideContentItem
 ): Promise<ExactSlideRuntimeData | null> {
-  if (cachedSlideRuntime[slideId] && !customSlide?.webObjectUrl) {
-    return cachedSlideRuntime[slideId];
+  // If this is a custom 360° Budaya slide added by Admin (not copied from another non-360 slide),
+  // return an exact 1280x720 WebObject + authentic Slide 8 Back Button stage identical to Slide 8 (5jTlwgcUi8o)
+  if (
+    !SLIDE_EXACT_META[slideId] &&
+    !customSlide?.copiedFromSlideId &&
+    (customSlide?.customCategory === 'tur360' ||
+      Boolean(customSlide?.webObjectUrl) ||
+      slideId.startsWith('tur360_'))
+  ) {
+    const embedUrl = normalizeSmartEmbedUrl(
+      customSlide?.webObjectUrl,
+      'https://faryzt.github.io/starla-360/'
+    );
+    return {
+      slideId,
+      width: 1280,
+      height: 720,
+      backgroundUrl:
+        customSlide?.backgroundUrl || 'mobile/Slide5znCNCeGBCx.jpg',
+      objects: [
+        {
+          id: `${slideId}_webobj`,
+          kind: 'webobject',
+          xPos: 0,
+          yPos: 0,
+          width: 1280,
+          height: 720,
+          depth: 1,
+          imageUrl: null,
+          shapeCommandSetId: null,
+          textCommandSetId: null,
+          altText: '360 Budaya Embed (Slide 8 Parity)',
+          webUrl: embedUrl,
+          videoUrl: null,
+          posterUrl: null,
+        },
+        {
+          id: `${slideId}_back_btn`,
+          kind: 'vectorshape',
+          xPos: 8,
+          yPos: 8,
+          width: 95,
+          height: 68,
+          depth: 2,
+          imageUrl: 'mobile/6UTk9YJ1Rv7.png',
+          shapeCommandSetId: null,
+          textCommandSetId: null,
+          altText: 'Tombol Kembali (Slide 8)',
+          webUrl: null,
+          videoUrl: null,
+          posterUrl: null,
+        },
+      ],
+      pathsLib: {},
+    };
+  }
+
+  if (cachedSlideRuntimeMap.has(slideId)) {
+    const existing = cachedSlideRuntimeMap.get(slideId)!;
+    // Refresh LRU order
+    cachedSlideRuntimeMap.delete(slideId);
+    cachedSlideRuntimeMap.set(slideId, existing);
+    // Apply any live customSlide backgroundUrl or webObjectUrl override dynamically
+    const liveWebUrl = customSlide?.webObjectUrl
+      ? normalizeSmartEmbedUrl(customSlide.webObjectUrl)
+      : null;
+    if (liveWebUrl || customSlide?.backgroundUrl) {
+      return {
+        ...existing,
+        backgroundUrl: customSlide?.backgroundUrl || existing.backgroundUrl,
+        objects: existing.objects.map((o) =>
+          o.kind === 'webobject' && liveWebUrl ? { ...o, webUrl: liveWebUrl } : o
+        ),
+      };
+    }
+    return existing;
   }
 
   try {
@@ -927,70 +1465,70 @@ export async function loadExactSlideStageData(
       }
     }
 
-    // If this is a custom 360° Budaya slide added by Admin (no static .js file in html5/data/js),
-    // return an exact 1280x720 WebObject + Back Button stage identical to Slide 8 (5jTlwgcUi8o)
-    if (
-      !SLIDE_EXACT_META[slideId] &&
-      (customSlide?.customCategory === 'tur360' ||
-        customSlide?.webObjectUrl ||
-        slideId.startsWith('tur360_'))
-    ) {
-      const embedUrl =
-        customSlide?.webObjectUrl || 'https://faryzt.github.io/starla-360/';
+    const effectiveSourceSlideId = customSlide?.copiedFromSlideId || slideId;
+    const slideRes = await fetch(`/html5/data/js/${effectiveSourceSlideId}.js`);
+    if (!slideRes.ok) {
+      // For a brand-new custom slide added in Desain Slide (without a native .js file),
+      // return a valid 1280x720 stage with background and an authentic Slide 8 Back button
+      const hasEmbed =
+        customSlide?.customCategory === 'tur360' ||
+        Boolean(customSlide?.webObjectUrl) ||
+        slideId.startsWith('tur360_');
+      const fallbackObjects: ExactStageObject[] = [];
+      if (hasEmbed) {
+        fallbackObjects.push({
+          id: `${slideId}_webobj`,
+          kind: 'webobject',
+          xPos: 0,
+          yPos: 0,
+          width: 1280,
+          height: 720,
+          depth: 1,
+          imageUrl: null,
+          shapeCommandSetId: null,
+          textCommandSetId: null,
+          altText: '360 Budaya Embed',
+          webUrl: normalizeSmartEmbedUrl(customSlide?.webObjectUrl),
+          videoUrl: null,
+          posterUrl: null,
+        });
+      }
+      fallbackObjects.push({
+        id: `${slideId}_back_btn`,
+        kind: 'vectorshape',
+        xPos: 8,
+        yPos: 8,
+        width: 95,
+        height: 68,
+        depth: 2,
+        imageUrl: 'mobile/6UTk9YJ1Rv7.png',
+        shapeCommandSetId: null,
+        textCommandSetId: null,
+        altText: 'Tombol Kembali ke Menu',
+        webUrl: null,
+        videoUrl: null,
+        posterUrl: null,
+      });
       return {
         slideId,
         width: 1280,
         height: 720,
-        backgroundUrl: customSlide?.backgroundUrl || 'mobile/Slide5znCNCeGBCx.jpg',
-        objects: [
-          {
-            id: `${slideId}_webobj`,
-            kind: 'webobject',
-            xPos: 0,
-            yPos: 0,
-            width: 1280,
-            height: 720,
-            depth: 1,
-            imageUrl: null,
-            shapeCommandSetId: null,
-            textCommandSetId: null,
-            altText: '360 Budaya Embed',
-            webUrl: embedUrl,
-            videoUrl: null,
-            posterUrl: null,
-          },
-          {
-            id: `${slideId}_back_btn`,
-            kind: 'vectorshape',
-            xPos: 1126,
-            yPos: 21,
-            width: 69,
-            height: 67,
-            depth: 2,
-            imageUrl: 'mobile/5dCAlHC5W8Z.png',
-            shapeCommandSetId: null,
-            textCommandSetId: null,
-            altText: 'Tombol Kembali ke Menu',
-            webUrl: null,
-            videoUrl: null,
-            posterUrl: null,
-          },
-        ],
-        pathsLib: cachedPathsLib || {},
+        backgroundUrl:
+          customSlide?.backgroundUrl || 'mobile/Slide5znCNCeGBCx.jpg',
+        objects: fallbackObjects,
+        pathsLib: {},
       };
     }
-
-    const slideRes = await fetch(`/html5/data/js/${slideId}.js`);
-    if (!slideRes.ok) return null;
     const slideRaw = await slideRes.text();
     const sData = parseProvideDataPayload(slideRaw);
     if (!sData) return null;
 
     const bgAssetId = sData.background?.imagedata?.assetId;
     const backgroundUrl: string | null =
-      bgAssetId !== undefined && cachedAssetLib?.[bgAssetId]?.url
+      customSlide?.backgroundUrl ||
+      (bgAssetId !== undefined && cachedAssetLib?.[bgAssetId]?.url
         ? cachedAssetLib[bgAssetId].url!
-        : SLIDE_EXACT_META[slideId]?.backgroundUrl || null;
+        : SLIDE_EXACT_META[effectiveSourceSlideId]?.backgroundUrl || null);
 
     const baseLayer =
       (sData.slideLayers || []).find((l: any) => l.isBaseLayer) ||
@@ -1017,7 +1555,9 @@ export async function loadExactSlideStageData(
         const width = typeof o.width === 'number' ? o.width : 0;
         const height = typeof o.height === 'number' ? o.height : 0;
         const effDepth =
-          typeof o.depth === 'number' ? o.depth + parentDepth : objects.length + 1;
+          typeof o.depth === 'number'
+            ? o.depth + parentDepth
+            : objects.length + 1;
 
         if (Array.isArray(o.objects) && o.objects.length > 0) {
           if (o.kind === 'stategroup') {
@@ -1055,16 +1595,19 @@ export async function loadExactSlideStageData(
           typeof textPrIdx === 'number' ? `commandset-${textPrIdx}` : null;
 
         const altText = o.data?.vectorData?.altText || '';
-        const webUrl = o.kind === 'webobject' ? o.url || null : null;
+        const webUrl =
+          o.kind === 'webobject'
+            ? normalizeSmartEmbedUrl(customSlide?.webObjectUrl || o.url)
+            : null;
 
         let videoUrl: string | null = null;
         let posterUrl: string | null = null;
         if (o.kind === 'video') {
-          if (slideId === '6AR4SV4ZYat') {
+          if (effectiveSourceSlideId === '6AR4SV4ZYat') {
             videoUrl = 'story_content/video_6nPjLwNxeE5_22_56_1280x720.mp4';
             posterUrl =
               'mobile/poster_5fW9LQF7to8_video_6nPjLwNxeE5_22_56_1280x720.jpg';
-          } else if (slideId === '6IgV5Xf2ecV') {
+          } else if (effectiveSourceSlideId === '6IgV5Xf2ecV') {
             videoUrl = 'story_content/video_5gKzK4lbTf6_22_56_1280x720.mp4';
             posterUrl =
               'mobile/poster_6IvTTb86pVv_video_5gKzK4lbTf6_22_56_1280x720.jpg';
@@ -1093,16 +1636,37 @@ export async function loadExactSlideStageData(
     collectObjects(baseLayer?.objects || []);
     objects.sort((a, b) => a.depth - b.depth);
 
+    // Slice pathsLib to ONLY the command sets used by this slide to minimize memory footprint
+    const scopedPathsLib: Record<string, any> = {};
+    if (cachedPathsLib) {
+      for (const obj of objects) {
+        if (
+          obj.shapeCommandSetId &&
+          cachedPathsLib[obj.shapeCommandSetId] !== undefined
+        ) {
+          scopedPathsLib[obj.shapeCommandSetId] =
+            cachedPathsLib[obj.shapeCommandSetId];
+        }
+        if (
+          obj.textCommandSetId &&
+          cachedPathsLib[obj.textCommandSetId] !== undefined
+        ) {
+          scopedPathsLib[obj.textCommandSetId] =
+            cachedPathsLib[obj.textCommandSetId];
+        }
+      }
+    }
+
     const runtimeData: ExactSlideRuntimeData = {
       slideId,
       width: sData.width || 1280,
       height: sData.height || 720,
       backgroundUrl,
       objects,
-      pathsLib: cachedPathsLib || {},
+      pathsLib: scopedPathsLib,
     };
 
-    cachedSlideRuntime[slideId] = runtimeData;
+    setLruSlideRuntime(slideId, runtimeData);
     return runtimeData;
   } catch {
     return null;

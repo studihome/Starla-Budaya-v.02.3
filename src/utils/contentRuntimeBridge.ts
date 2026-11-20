@@ -8,6 +8,8 @@ import {
 import {
   GARUDA_BIRD_QUESTIONS,
   GARUDA_DROP_TARGETS,
+  playStudioSoundEffect,
+  normalizeSmartEmbedUrl,
 } from './slideExactMeta';
 import { LOCAL_STORAGE_MEDIA_KEY } from '../lib/supabase';
 
@@ -686,12 +688,137 @@ export function transformStorylineProvideData(
           parsed.background.imglibrary[0].url = slideCfg.backgroundUrl;
           modified = true;
         }
+
+        // Apply native button / element position, size, action link & visibility overrides to Storyline slide JSON
+        const elOverrides = slideCfg.elementOverrides || {};
+        const hiddenIds = slideCfg.hiddenElementIds || [];
+        if (
+          (Object.keys(elOverrides).length > 0 || hiddenIds.length > 0) &&
+          Array.isArray(parsed.slideLayers)
+        ) {
+          const patchRawObjects = (rawObjs: any[]) => {
+            for (const o of rawObjs) {
+              if (!o || typeof o !== 'object') continue;
+              const ov = o.id ? elOverrides[o.id] : undefined;
+              const isHidden = Boolean(
+                ov?.hidden || (o.id && hiddenIds.includes(o.id))
+              );
+              if (isHidden) {
+                o.xPos = -2000;
+                o.yPos = -2000;
+                modified = true;
+              } else if (ov) {
+                if (typeof ov.xDeltaPct === 'number' && ov.xDeltaPct !== 0) {
+                  o.xPos = Math.round(
+                    (o.xPos || 0) + (ov.xDeltaPct / 100) * 1280
+                  );
+                  modified = true;
+                }
+                if (typeof ov.yDeltaPct === 'number' && ov.yDeltaPct !== 0) {
+                  o.yPos = Math.round(
+                    (o.yPos || 0) + (ov.yDeltaPct / 100) * 720
+                  );
+                  modified = true;
+                }
+                if (typeof ov.widthPct === 'number' && ov.widthPct > 0) {
+                  o.width = Math.round((ov.widthPct / 100) * 1280);
+                  modified = true;
+                }
+                if (typeof ov.heightPct === 'number' && ov.heightPct > 0) {
+                  o.height = Math.round((ov.heightPct / 100) * 720);
+                  modified = true;
+                }
+                // Record that this object's initial JSON coordinates already include these deltas
+                if (typeof window !== 'undefined' && o.id) {
+                  const winShift = window as unknown as {
+                    __STARLA_JSON_SHIFTED_ELEMENTS__?: Record<
+                      string,
+                      Record<string, { xDeltaPct: number; yDeltaPct: number }>
+                    >;
+                  };
+                  if (!winShift.__STARLA_JSON_SHIFTED_ELEMENTS__) {
+                    winShift.__STARLA_JSON_SHIFTED_ELEMENTS__ = {};
+                  }
+                  if (!winShift.__STARLA_JSON_SHIFTED_ELEMENTS__[parsed.id]) {
+                    winShift.__STARLA_JSON_SHIFTED_ELEMENTS__[parsed.id] = {};
+                  }
+                  winShift.__STARLA_JSON_SHIFTED_ELEMENTS__[parsed.id][o.id] = {
+                    xDeltaPct: ov.xDeltaPct || 0,
+                    yDeltaPct: ov.yDeltaPct || 0,
+                  };
+                }
+                // If admin linked this native button to a slide or popup, neutralize or retarget Storyline's internal onrelease events
+                if (ov.actionType && ov.actionType !== 'default') {
+                  if (
+                    ov.actionType === 'goto-slide' &&
+                    ov.targetSlideId &&
+                    Boolean(defaultContent.slides[ov.targetSlideId]) &&
+                    Array.isArray(o.events)
+                  ) {
+                    let patchedGoto = false;
+                    for (const ev of o.events) {
+                      if (Array.isArray(ev?.actions)) {
+                        for (const act of ev.actions) {
+                          if (act?.kind === 'gotoplay') {
+                            act.url = `_player.5sAEMI5psmg.${ov.targetSlideId}`;
+                            patchedGoto = true;
+                            modified = true;
+                          }
+                        }
+                      }
+                    }
+                    if (!patchedGoto) {
+                      o.events = [
+                        {
+                          kind: 'onrelease',
+                          actions: [
+                            {
+                              kind: 'gotoplay',
+                              window: '_current',
+                              wndtype: 'normal',
+                              objRef: { type: 'string', value: '_ Montenegro' },
+                              url: `_player.5sAEMI5psmg.${ov.targetSlideId}`,
+                            },
+                          ],
+                        },
+                      ];
+                      modified = true;
+                    }
+                  } else if (Array.isArray(o.events) && o.events.length > 0) {
+                    // Custom target slide (e.g. new 360° slide) or embed-popup / open-url:
+                    // clear native gotoplay so Storyline never hijacks the click before starla:native-element-trigger fires
+                    o.events = [];
+                    modified = true;
+                  }
+                }
+              }
+              if (Array.isArray(o.objects)) {
+                patchRawObjects(o.objects);
+              }
+              if (Array.isArray(o.states)) {
+                for (const st of o.states) {
+                  if (Array.isArray(st?.objects)) {
+                    patchRawObjects(st.objects);
+                  }
+                }
+              }
+            }
+          };
+          for (const layer of parsed.slideLayers) {
+            if (Array.isArray(layer?.objects)) {
+              patchRawObjects(layer.objects);
+            }
+          }
+        }
       }
 
-      // Sync Slide 8 (5jTlwgcUi8o) WebObject 360° URL if updated
-      if (parsed.id === '5jTlwgcUi8o') {
-        const custom360Url =
+      // Sync Slide 8 (5jTlwgcUi8o) or any slide with WebObject 360° URL if updated
+      if (parsed.id === '5jTlwgcUi8o' || slideCfg?.webObjectUrl) {
+        const raw360Url =
           slideCfg?.webObjectUrl || activeContent.appMeta?.canonicalUrl;
+        const custom360Url = raw360Url
+          ? normalizeSmartEmbedUrl(raw360Url)
+          : null;
         if (
           custom360Url &&
           custom360Url !== defaultContent.appMeta.canonicalUrl &&
@@ -699,8 +826,12 @@ export function transformStorylineProvideData(
         ) {
           for (const layer of parsed.slideLayers) {
             for (const obj of layer.objects || []) {
-              if (obj.kind === 'webobject' && obj.url !== custom360Url) {
+              if (
+                obj.kind === 'webobject' &&
+                (obj.url !== custom360Url || obj.html5Url !== custom360Url)
+              ) {
                 obj.url = custom360Url;
+                obj.html5Url = custom360Url;
                 modified = true;
               }
             }
@@ -730,7 +861,7 @@ export function transformStorylineProvideData(
 
             if (
               (ov.targetChoice || ov.points !== undefined) &&
-              Array.isArray(obj. events)
+              Array.isArray(obj.events)
             ) {
               const targetId =
                 ov.targetChoice === 'Budaya yang Salah'
@@ -831,6 +962,24 @@ export function applySlideElementOverridesToDom(
     overriddenEls.forEach((el) => {
       el.style.marginLeft = '';
       el.style.marginTop = '';
+      el.style.backgroundImage = '';
+      el.style.backgroundSize = '';
+      el.style.backgroundRepeat = '';
+      el.style.backgroundPosition = '';
+      if (el.dataset.starlaOrigW && el.dataset.starlaOrigH) {
+        const origW = parseFloat(el.dataset.starlaOrigW) || 100;
+        const origH = parseFloat(el.dataset.starlaOrigH) || 60;
+        el.style.width = `${origW}px`;
+        el.style.height = `${origH}px`;
+        el.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
+          svg.setAttribute('width', `${origW}`);
+          svg.setAttribute('height', `${origH}`);
+          svg.style.width = `${origW}px`;
+          svg.style.height = `${origH}px`;
+          svg.style.opacity = '';
+          svg.style.display = '';
+        });
+      }
       if (el.dataset.starlaOrigDisplay !== undefined) {
         el.style.display = el.dataset.starlaOrigDisplay;
         delete el.dataset.starlaOrigDisplay;
@@ -838,6 +987,72 @@ export function applySlideElementOverridesToDom(
       delete el.dataset.starlaOverridden;
     });
     return;
+  }
+
+  // Guard all root <svg> elements inside #slide-window against percentage width/height
+  // because Storyline's Canvg svgHit parses svg.parentNode.innerHTML on a detached canvas
+  // where viewPort.viewPorts is empty until root <svg> pixel width/height are evaluated.
+  slideWindow.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
+    const attrW = svg.getAttribute('width') || '';
+    const attrH = svg.getAttribute('height') || '';
+    const styleW = svg.style.width || '';
+    const styleH = svg.style.height || '';
+    if (
+      attrW.includes('%') ||
+      attrH.includes('%') ||
+      styleW.includes('%') ||
+      styleH.includes('%')
+    ) {
+      const host =
+        svg.closest<HTMLElement>('[data-model-id]') ||
+        svg.parentElement ||
+        slideWindow;
+      const vb = (svg.getAttribute('viewBox') || '')
+        .trim()
+        .split(/[\s,]+/)
+        .map(Number);
+      const fallbackW =
+        (!host.style.width.includes('%') ? parseFloat(host.style.width) : 0) ||
+        host.offsetWidth ||
+        (vb.length === 4 && vb[2] > 0 ? vb[2] : 100);
+      const fallbackH =
+        (!host.style.height.includes('%')
+          ? parseFloat(host.style.height)
+          : 0) ||
+        host.offsetHeight ||
+        (vb.length === 4 && vb[3] > 0 ? vb[3] : 60);
+      const pxW = Math.max(4, Math.round(fallbackW));
+      const pxH = Math.max(4, Math.round(fallbackH));
+      svg.setAttribute('width', `${pxW}`);
+      svg.setAttribute('height', `${pxH}`);
+      svg.style.width = `${pxW}px`;
+      svg.style.height = `${pxH}px`;
+    }
+  });
+
+  const winShift =
+    typeof window !== 'undefined'
+      ? (window as unknown as {
+          __STARLA_JSON_SHIFTED_ELEMENTS__?: Record<
+            string,
+            Record<string, { xDeltaPct: number; yDeltaPct: number }>
+          >;
+        })
+      : {};
+
+  // Live-sync Slide 8 (5jTlwgcUi8o) webobject iframe URL if Slide 8 is currently mounted
+  const slide8Cfg = activeContent.slides['5jTlwgcUi8o'];
+  if (slide8Cfg?.webObjectUrl) {
+    const target360Url = normalizeSmartEmbedUrl(slide8Cfg.webObjectUrl);
+    const webObjNode = slideWindow.querySelector<HTMLElement>(
+      '[data-model-id="5maQz6EtJQu"]'
+    );
+    if (webObjNode) {
+      const iframeEl = webObjNode.querySelector<HTMLIFrameElement>('iframe');
+      if (iframeEl && iframeEl.getAttribute('src') !== target360Url) {
+        iframeEl.setAttribute('src', target360Url);
+      }
+    }
   }
 
   for (const slide of Object.values(activeContent.slides)) {
@@ -861,8 +1076,16 @@ export function applySlideElementOverridesToDom(
       );
       if (nodes.length === 0) continue;
 
+      const accNode = document.getElementById(
+        `acc-${elementId}`
+      ) as HTMLElement | null;
+
       const ov = overrides?.[elementId];
       const isHidden = Boolean(ov?.hidden || hiddenIds.includes(elementId));
+
+      if (accNode) {
+        accNode.style.display = isHidden ? 'none' : '';
+      }
 
       nodes.forEach((el) => {
         el.dataset.starlaOverridden = 'true';
@@ -878,26 +1101,300 @@ export function applySlideElementOverridesToDom(
         }
 
         if (ov) {
+          const baked =
+            winShift.__STARLA_JSON_SHIFTED_ELEMENTS__?.[slide.id]?.[elementId];
+          const netXDeltaPct = (ov.xDeltaPct || 0) - (baked?.xDeltaPct || 0);
+          const netYDeltaPct = (ov.yDeltaPct || 0) - (baked?.yDeltaPct || 0);
+
           el.style.marginLeft =
-            ov.xDeltaPct && ov.xDeltaPct !== 0 ? `${ov.xDeltaPct}%` : '';
+            Math.abs(netXDeltaPct) > 0.001
+              ? `${Math.round((netXDeltaPct / 100) * 1280)}px`
+              : '';
           el.style.marginTop =
-            ov.yDeltaPct && ov.yDeltaPct !== 0 ? `${ov.yDeltaPct}%` : '';
-          if (ov.widthPct !== undefined && ov.widthPct > 0) {
-            el.style.width = `${ov.widthPct}%`;
+            Math.abs(netYDeltaPct) > 0.001
+              ? `${Math.round((netYDeltaPct / 100) * 720)}px`
+              : '';
+
+          if (!el.dataset.starlaOrigW) {
+            const svgEl = el.querySelector<SVGSVGElement>('svg');
+            const svgAttrW = svgEl?.getAttribute('width') || '';
+            const parsedSvgW = !svgAttrW.includes('%')
+              ? parseFloat(svgAttrW)
+              : 0;
+            const styleW = !el.style.width.includes('%')
+              ? parseFloat(el.style.width)
+              : 0;
+            el.dataset.starlaOrigW = String(
+              styleW || parsedSvgW || el.offsetWidth || 100
+            );
           }
-          if (ov.heightPct !== undefined && ov.heightPct > 0) {
-            el.style.height = `${ov.heightPct}%`;
+          if (!el.dataset.starlaOrigH) {
+            const svgEl = el.querySelector<SVGSVGElement>('svg');
+            const svgAttrH = svgEl?.getAttribute('height') || '';
+            const parsedSvgH = !svgAttrH.includes('%')
+              ? parseFloat(svgAttrH)
+              : 0;
+            const styleH = !el.style.height.includes('%')
+              ? parseFloat(el.style.height)
+              : 0;
+            el.dataset.starlaOrigH = String(
+              styleH || parsedSvgH || el.offsetHeight || 60
+            );
           }
+
+          const origW = parseFloat(el.dataset.starlaOrigW) || 100;
+          const origH = parseFloat(el.dataset.starlaOrigH) || 60;
+
+          if (
+            (ov.widthPct !== undefined && ov.widthPct > 0) ||
+            (ov.heightPct !== undefined && ov.heightPct > 0)
+          ) {
+            const targetW = Math.max(
+              4,
+              ov.widthPct !== undefined && ov.widthPct > 0
+                ? Math.round((ov.widthPct / 100) * 1280)
+                : Math.round(origW)
+            );
+            const targetH = Math.max(
+              4,
+              ov.heightPct !== undefined && ov.heightPct > 0
+                ? Math.round((ov.heightPct / 100) * 720)
+                : Math.round(origH)
+            );
+
+            el.style.width = `${targetW}px`;
+            el.style.height = `${targetH}px`;
+
+            // IMPORTANT: Always use explicit pixel dimensions (never '100%') on child divs and SVGs
+            // so Storyline's internal Canvg svgHit hit-testing never encounters percentage units on a detached canvas.
+            const childDivs = el.querySelectorAll<HTMLElement>('div');
+            childDivs.forEach((d) => {
+              d.style.width = `${targetW}px`;
+              d.style.height = `${targetH}px`;
+            });
+            const childSvgs = el.querySelectorAll<SVGSVGElement>('svg');
+            childSvgs.forEach((svg) => {
+              if (!svg.getAttribute('viewBox')) {
+                const rawAttrW = svg.getAttribute('width') || '';
+                const rawAttrH = svg.getAttribute('height') || '';
+                const sw =
+                  (!rawAttrW.includes('%') ? parseFloat(rawAttrW) : 0) || origW;
+                const sh =
+                  (!rawAttrH.includes('%') ? parseFloat(rawAttrH) : 0) || origH;
+                svg.setAttribute('viewBox', `0 0 ${sw} ${sh}`);
+              }
+              svg.setAttribute('preserveAspectRatio', 'none');
+              svg.setAttribute('width', `${targetW}`);
+              svg.setAttribute('height', `${targetH}`);
+              svg.style.width = `${targetW}px`;
+              svg.style.height = `${targetH}px`;
+            });
+            const childImgs = el.querySelectorAll<HTMLImageElement>('img');
+            childImgs.forEach((img) => {
+              img.style.width = `${targetW}px`;
+              img.style.height = `${targetH}px`;
+              img.style.objectFit = 'contain';
+            });
+          } else if (el.dataset.starlaOrigW && el.dataset.starlaOrigH) {
+            const restoreW = Math.max(4, Math.round(origW));
+            const restoreH = Math.max(4, Math.round(origH));
+            el.style.width = `${restoreW}px`;
+            el.style.height = `${restoreH}px`;
+            el.querySelectorAll<HTMLElement>('div').forEach((d) => {
+              d.style.width = `${restoreW}px`;
+              d.style.height = `${restoreH}px`;
+            });
+            el.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
+              svg.setAttribute('width', `${restoreW}`);
+              svg.setAttribute('height', `${restoreH}`);
+              svg.style.width = `${restoreW}px`;
+              svg.style.height = `${restoreH}px`;
+            });
+          }
+
+          // Remove any legacy injected <img> inside el so svg.parentNode.innerHTML stays valid single-root XML for Canvg
+          const legacyInjectedImg = el.querySelector<HTMLImageElement>(
+            'img[data-starla-custom-img="true"]'
+          );
+          if (legacyInjectedImg) {
+            legacyInjectedImg.remove();
+          }
+
           if (ov.customImage) {
+            const normalizedCustomImg =
+              ov.customImage.startsWith('http') ||
+              ov.customImage.startsWith('data:') ||
+              ov.customImage.startsWith('/')
+                ? ov.customImage
+                : `/${ov.customImage}`;
+            let replacedAny = false;
             const imgEl = el.querySelector<HTMLImageElement>('img');
-            if (imgEl && imgEl.src !== ov.customImage) {
-              imgEl.src = ov.customImage;
+            if (imgEl) {
+              if (imgEl.getAttribute('src') !== normalizedCustomImg) {
+                imgEl.setAttribute('src', normalizedCustomImg);
+              }
+              replacedAny = true;
             }
+            const svgImgs = el.querySelectorAll('image');
+            if (svgImgs.length > 0) {
+              svgImgs.forEach((svgImg) => {
+                svgImg.setAttribute('href', normalizedCustomImg);
+                svgImg.setAttribute('xlink:href', normalizedCustomImg);
+              });
+              replacedAny = true;
+            }
+            // If native button was a pure SVG vector path with no <img>/<image>, render replacement image via CSS background on el
+            // while keeping the <svg> intact (opacity: 0) so Storyline's Canvg svgHit XML parser and hit bounds work 100% cleanly.
+            if (!replacedAny) {
+              el.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
+                svg.style.display = '';
+                svg.style.opacity = '0';
+              });
+              el.style.backgroundImage = `url("${normalizedCustomImg}")`;
+              el.style.backgroundSize = 'contain';
+              el.style.backgroundRepeat = 'no-repeat';
+              el.style.backgroundPosition = 'center';
+            } else {
+              el.style.backgroundImage = '';
+              el.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
+                svg.style.display = '';
+                svg.style.opacity = '';
+              });
+            }
+          } else {
+            el.style.backgroundImage = '';
+            el.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
+              svg.style.display = '';
+              svg.style.opacity = '';
+            });
           }
+
           if (ov.customText !== undefined) {
             const tspanEl = el.querySelector('tspan');
             if (tspanEl && tspanEl.textContent !== ov.customText) {
               tspanEl.textContent = ov.customText;
+            }
+          }
+
+          // Bind auto-hover effect, UI button SFX, and custom action trigger on native Storyline buttons/elements
+          const hasCustomBehavior = Boolean(
+            (ov.actionType && ov.actionType !== 'default') ||
+              ov.clickSfxUrl ||
+              ov.hoverSfxUrl ||
+              ov.hoverEffect
+          );
+          if (hasCustomBehavior) {
+            el.style.cursor = 'pointer';
+            el.style.transition =
+              'transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), filter 0.2s ease';
+            el.dataset.starlaSlideId = slide.id;
+            el.dataset.starlaObjectId = elementId;
+
+            const bindCustomTriggerToNode = (targetNode: HTMLElement) => {
+              targetNode.dataset.starlaSlideId = slide.id;
+              targetNode.dataset.starlaObjectId = elementId;
+              if (targetNode.dataset.starlaTriggerBound) return;
+              targetNode.dataset.starlaTriggerBound = 'true';
+
+              targetNode.addEventListener('pointerenter', () => {
+                const winAny = window as unknown as {
+                  __STARLA_CONTENT__?: ContentSchema;
+                };
+                const liveOv =
+                  winAny.__STARLA_CONTENT__?.slides?.[
+                    targetNode.dataset.starlaSlideId || ''
+                  ]?.elementOverrides?.[
+                    targetNode.dataset.starlaObjectId || ''
+                  ];
+                if (liveOv?.hoverEffect !== 'none') {
+                  el.style.transform = 'scale(1.06)';
+                  el.style.filter =
+                    'brightness(1.08) drop-shadow(0 6px 14px rgba(37, 99, 235, 0.35))';
+                }
+                if (liveOv?.hoverSfxUrl && liveOv.hoverSfxUrl !== 'none') {
+                  playStudioSoundEffect(liveOv.hoverSfxUrl, 0.45);
+                }
+              });
+
+              targetNode.addEventListener('pointerleave', () => {
+                el.style.transform = '';
+                el.style.filter = '';
+              });
+
+              // Block Storyline's internal onrelease (mouseup / touchend / pointerup) in capture phase
+              // whenever admin has set a custom actionType (e.g. goto-slide, embed-popup, open-url)
+              let lastTriggerAt = 0;
+              const interceptAndFire = (ev: Event, shouldDispatch: boolean) => {
+                const winAny = window as unknown as {
+                  __STARLA_CONTENT__?: ContentSchema;
+                };
+                const sId = targetNode.dataset.starlaSlideId || '';
+                const oId = targetNode.dataset.starlaObjectId || '';
+                const liveOv =
+                  winAny.__STARLA_CONTENT__?.slides?.[sId]?.elementOverrides?.[
+                    oId
+                  ];
+                if (!liveOv) return;
+
+                const hasActionOverride = Boolean(
+                  liveOv.actionType && liveOv.actionType !== 'default'
+                );
+
+                if (hasActionOverride) {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  if (typeof ev.stopImmediatePropagation === 'function') {
+                    ev.stopImmediatePropagation();
+                  }
+                }
+
+                if (!shouldDispatch) return;
+
+                const now = Date.now();
+                if (now - lastTriggerAt < 220) return;
+                lastTriggerAt = now;
+
+                if (liveOv.clickSfxUrl && liveOv.clickSfxUrl !== 'none') {
+                  playStudioSoundEffect(liveOv.clickSfxUrl, 0.8);
+                }
+
+                if (hasActionOverride) {
+                  window.dispatchEvent(
+                    new CustomEvent('starla:native-element-trigger', {
+                      detail: {
+                        slideId: sId,
+                        objectId: oId,
+                        override: liveOv,
+                      },
+                    })
+                  );
+                }
+              };
+
+              // Intercept press-down events so Storyline doesn't arm its internal release state
+              ['pointerdown', 'mousedown', 'touchstart'].forEach((evtName) => {
+                targetNode.addEventListener(
+                  evtName,
+                  (ev) => interceptAndFire(ev, false),
+                  true
+                );
+              });
+
+              // Intercept release and click events and fire our custom action once
+              ['pointerup', 'mouseup', 'touchend', 'click'].forEach(
+                (evtName) => {
+                  targetNode.addEventListener(
+                    evtName,
+                    (ev) => interceptAndFire(ev, true),
+                    true
+                  );
+                }
+              );
+            };
+
+            bindCustomTriggerToNode(el);
+            if (accNode) {
+              bindCustomTriggerToNode(accNode);
             }
           }
         }

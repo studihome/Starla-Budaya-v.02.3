@@ -42,6 +42,8 @@ import {
   redoHistoryState,
   updateTransientHistoryState,
   commitTransientHistoryState,
+  CANVAS_SAVE_DEBOUNCE_MS,
+  createCanvasStateSaveDebouncer,
 } from '../features/canvas/canvasMath';
 import {
   duplicateSlideItem,
@@ -104,6 +106,8 @@ export interface ContentContextValue {
   undo: () => void;
   redo: () => void;
   updateContent: (updater: ContentUpdater) => void;
+  updateContentTransient: (updater: ContentUpdater) => void;
+  flushPendingSave: () => void;
   updateSlideContent: (
     slideId: string,
     patch: Partial<SlideContentItem>
@@ -218,6 +222,8 @@ export const ContentContext = createContext<ContentContextValue>({
   undo: () => {},
   redo: () => {},
   updateContent: () => {},
+  updateContentTransient: () => {},
+  flushPendingSave: () => {},
   updateSlideContent: () => {},
   updateQuizQuestion: () => {},
   updateSvgText: () => {},
@@ -315,6 +321,22 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
   // Menyimpan snapshot awal sebelum drag/resize 60fps dimulai agar `commitToHistory()` menyimpan 1 langkah Undo utuh
   const transientBaselineRef = useRef<ContentSchema | null>(null);
 
+  // Debouncer penyimpanan state & sinkronisasi DOM untuk mencegah lag saat drag-and-drop 60fps / edit properti cepat
+  const saveDebouncerRef = useRef(
+    createCanvasStateSaveDebouncer<ContentSchema>(CANVAS_SAVE_DEBOUNCE_MS)
+  );
+
+  const schedulePersistAndSync = useCallback((nextContent: ContentSchema) => {
+    saveDebouncerRef.current.schedule(nextContent, (latest) => {
+      saveContentToLocalStorage(latest);
+      syncContentToLiveDom(latest);
+    });
+  }, []);
+
+  const flushPendingSave = useCallback(() => {
+    saveDebouncerRef.current.flush();
+  }, []);
+
   const commitContentChange = useCallback(
     (
       nextResolver: (prev: ContentSchema) => ContentSchema,
@@ -324,9 +346,8 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
         const next = nextResolver(prevHist.present);
         if (next === prevHist.present) return prevHist;
         transientBaselineRef.current = null;
-        saveContentToLocalStorage(next);
-        syncContentToLiveDom(next);
         contentRef.current = next;
+        schedulePersistAndSync(next);
         if (!recordHistory) {
           return {
             ...prevHist,
@@ -336,7 +357,7 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
         return pushHistoryState(prevHist, next);
       });
     },
-    []
+    [schedulePersistAndSync]
   );
 
   const applyTransientChange = useCallback(
@@ -348,10 +369,11 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
           transientBaselineRef.current = prevHist.present;
         }
         contentRef.current = next;
+        schedulePersistAndSync(next);
         return updateTransientHistoryState(prevHist, next);
       });
     },
-    []
+    [schedulePersistAndSync]
   );
 
   const commitToHistory = useCallback(() => {
@@ -361,13 +383,13 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
       if (!baseline || baseline === prevHist.present) {
         return prevHist;
       }
-      saveContentToLocalStorage(prevHist.present);
-      syncContentToLiveDom(prevHist.present);
+      schedulePersistAndSync(prevHist.present);
       return commitTransientHistoryState(prevHist, baseline);
     });
-  }, []);
+  }, [schedulePersistAndSync]);
 
   const undoContent = useCallback(() => {
+    saveDebouncerRef.current.cancel();
     setHistoryState((prevHist) => {
       if (prevHist.past.length === 0) return prevHist;
       const nextHist = undoHistoryState(prevHist);
@@ -379,6 +401,7 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
   }, []);
 
   const redoContent = useCallback(() => {
+    saveDebouncerRef.current.cancel();
     setHistoryState((prevHist) => {
       if (prevHist.future.length === 0) return prevHist;
       const nextHist = redoHistoryState(prevHist);
@@ -440,6 +463,13 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
       commitContentChange((prev) => resolveUpdatedContent(prev, updater));
     },
     [commitContentChange]
+  );
+
+  const updateContentTransient = useCallback(
+    (updater: ContentUpdater) => {
+      applyTransientChange((prev) => resolveUpdatedContent(prev, updater));
+    },
+    [applyTransientChange]
   );
 
   const updateSlideContent = useCallback(
@@ -698,11 +728,13 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
     ): Promise<SaveContentResult> => {
       setIsSyncing(true);
       try {
+        saveDebouncerRef.current.flush();
         const resolved = newContent
           ? resolveUpdatedContent(contentRef.current, newContent)
           : contentRef.current;
 
         commitContentChange(() => resolved, false);
+        saveDebouncerRef.current.flush();
 
         const result = await saveMainContentToCloud(resolved);
         if (result.source === 'supabase') {
@@ -742,6 +774,7 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
   );
 
   const resetContent = useCallback(() => {
+    saveDebouncerRef.current.cancel();
     clearContentFromLocalStorage();
     setSupabaseContent(null);
     setHistoryState(createInitialHistoryState(defaultContent));
@@ -858,9 +891,23 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
     [uploadMediaToCloud]
   );
 
+  // Sinkronisasi awal & pastikan setiap perubahan debounced di-flush saat tab ditutup / unmount
   useEffect(() => {
-    syncContentToLiveDom(content);
-  }, [content]);
+    const debouncer = saveDebouncerRef.current;
+    syncContentToLiveDom(contentRef.current);
+    const handleBeforeUnload = () => {
+      debouncer.flush();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      }
+      debouncer.flush();
+    };
+  }, []);
 
   const contextValue = useMemo<ContentContextValue>(
     () => ({
@@ -896,6 +943,8 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
       undo: undoContent,
       redo: redoContent,
       updateContent,
+      updateContentTransient,
+      flushPendingSave,
       updateSlideContent,
       updateQuizQuestion,
       updateSvgText,
@@ -944,6 +993,8 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
       undoContent,
       redoContent,
       updateContent,
+      updateContentTransient,
+      flushPendingSave,
       updateSlideContent,
       updateQuizQuestion,
       updateSvgText,

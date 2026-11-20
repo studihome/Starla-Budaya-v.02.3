@@ -1268,7 +1268,7 @@ test('Smart Logic: 10 Game Anak Garuda Bird Questions, 360° Slide + Image Butto
     'https://faryzt.github.io/starla-360/?scene=borobudur'
   );
 
-  // Attach an Image Button on Menu Materi Slide 43 (`5iew2M44w24`) linking to `tur360_custom_borobudur`
+  // Attach an uploaded Image Button (100% pure image, transparent background) on Menu Materi Slide 43 (`5iew2M44w24`) linking to `tur360_custom_borobudur`
   const { nextSchema: withMenuBtn, createdElement } = applyAddCanvasElement(
     with360Slide,
     '5iew2M44w24',
@@ -1276,6 +1276,11 @@ test('Smart Logic: 10 Game Anak Garuda Bird Questions, 360° Slide + Image Butto
       type: 'image-button',
       label: 'Tur 360° Borobudur',
       imageUrl: STARLA_BUTTON_PRESETS[0].imageUrl,
+      style: {
+        backgroundColor: 'transparent',
+        borderRadius: 0,
+        textPosition: 'hidden',
+      },
       action: {
         type: 'goto-slide',
         targetSlideId: custom360SlideId,
@@ -1284,10 +1289,50 @@ test('Smart Logic: 10 Game Anak Garuda Bird Questions, 360° Slide + Image Butto
   );
   assert.equal(createdElement.action.type, 'goto-slide');
   assert.equal(createdElement.action.targetSlideId, custom360SlideId);
+  assert.equal(createdElement.style?.backgroundColor, 'transparent');
+  assert.equal(createdElement.style?.textPosition, 'hidden');
   assert.equal(
     withMenuBtn.slides['5iew2M44w24'].canvasElements?.[0].imageUrl,
     'mobile/5dCAlHC5W8Z.png'
   );
+
+  // Verify moving native slide buttons via elementOverrides updates Storyline slide provideData xPos/yPos in 1280x720 coordinates
+  const { applyElementOverridePatch } = await import(
+    './features/canvas/canvasMath'
+  );
+  const withMovedNativeBtn = applyElementOverridePatch(
+    withMenuBtn,
+    '5iew2M44w24',
+    'native_btn_1',
+    {
+      xDeltaPct: 10, // +128px on 1280 stage
+      yDeltaPct: -5, // -36px on 720 stage
+    }
+  );
+  const transformedSlideJson = transformStorylineProvideData(
+    'slide',
+    JSON.stringify({
+      id: '5iew2M44w24',
+      slideLayers: [
+        {
+          objects: [
+            {
+              id: 'native_btn_1',
+              xPos: 200,
+              yPos: 300,
+              width: 120,
+              height: 50,
+            },
+          ],
+        },
+      ],
+    }),
+    withMovedNativeBtn
+  );
+  const parsedTransformedSlide = JSON.parse(transformedSlideJson);
+  const movedNativeObj = parsedTransformedSlide.slideLayers[0].objects[0];
+  assert.equal(movedNativeObj.xPos, 200 + Math.round(0.1 * 1280));
+  assert.equal(movedNativeObj.yPos, 300 + Math.round(-0.05 * 720));
 
   // 3. Verify Last Active Slide Persistence & Storage.prototype.clear Protection
   const storeMap = new Map<string, string>();
@@ -1335,4 +1380,569 @@ test('Smart Logic: 10 Game Anak Garuda Bird Questions, 360° Slide + Image Butto
   assert.equal(restoredSlide?.frontOpened, true);
   assert.equal(restoredSlide?.studentName, 'Putu Ayu');
 });
+
+test('Studio Slide Manager: Copy Slide (copySlideItem), Add New Slide with Background/Backsound/VoiceOver, SFX Catalogs, and Universal Button Triggers with Animated State Popup', async () => {
+  const {
+    STARLA_BACKSOUND_CATALOG,
+    STARLA_VOICEOVER_CATALOG,
+    STARLA_SFX_CATALOG,
+    STARLA_BACKGROUND_PRESETS,
+  } = await import('./utils/slideExactMeta');
+  const { addSlideItem, copySlideItem } = await import(
+    './features/admin/adminHelpers'
+  );
+  const {
+    applyAddCanvasElement,
+    applyUpdateCanvasElement,
+    applyElementOverridePatch,
+  } = await import('./features/canvas/canvasMath');
+
+  // 1. Verify Backsound, VoiceOver, SFX, and Background Presets databases are populated
+  assert.ok(STARLA_BACKSOUND_CATALOG.length >= 5);
+  assert.ok(STARLA_VOICEOVER_CATALOG.length >= 6);
+  assert.ok(STARLA_SFX_CATALOG.length >= 10);
+  assert.ok(STARLA_BACKGROUND_PRESETS.length >= 6);
+
+  // 2. Copy an existing slide ('5iew2M44w24') with custom title, background, backsound, and voiceOver
+  const { nextSchema: withCopied, createdSlideId: copiedId } = copySlideItem(
+    defaultContent,
+    '5iew2M44w24',
+    {
+      title: 'Menu Materi Starla (Salinan Kustom)',
+      backgroundUrl: STARLA_BACKGROUND_PRESETS[1].imageUrl,
+      backsoundUrl: STARLA_BACKSOUND_CATALOG[0].url,
+      voiceOverUrl: STARLA_VOICEOVER_CATALOG[1].url,
+    }
+  );
+  assert.ok(copiedId);
+  assert.equal(withCopied.slideOrder.length, 44);
+  const copiedSlide = withCopied.slides[copiedId];
+  assert.equal(copiedSlide.copiedFromSlideId, '5iew2M44w24');
+  assert.equal(copiedSlide.title, 'Menu Materi Starla (Salinan Kustom)');
+  assert.equal(
+    copiedSlide.backgroundUrl,
+    STARLA_BACKGROUND_PRESETS[1].imageUrl
+  );
+  assert.equal(copiedSlide.backsoundUrl, STARLA_BACKSOUND_CATALOG[0].url);
+  assert.equal(copiedSlide.voiceOverUrl, STARLA_VOICEOVER_CATALOG[1].url);
+
+  // 3. Add a brand-new custom slide with background, backsound, and voiceOver
+  const { nextSchema: withNewCustom, createdSlideId: brandNewId } =
+    addSlideItem(withCopied, {
+      title: 'Eksplorasi Alat Musik Sasando NTT',
+      instructions: ['Mengenal sejarah dan melodi Sasando dari Pulau Rote.'],
+      backgroundUrl: STARLA_BACKGROUND_PRESETS[2].imageUrl,
+      backsoundUrl: STARLA_BACKSOUND_CATALOG[1].url,
+      voiceOverUrl: STARLA_VOICEOVER_CATALOG[2].url,
+      customCategory: 'materi',
+    });
+  assert.equal(withNewCustom.slideOrder.length, 45);
+  assert.equal(
+    withNewCustom.slides[brandNewId].backsoundUrl,
+    STARLA_BACKSOUND_CATALOG[1].url
+  );
+  assert.equal(
+    withNewCustom.slides[brandNewId].voiceOverUrl,
+    STARLA_VOICEOVER_CATALOG[2].url
+  );
+
+  // 4. Configure Universal Trigger (Animated Media State Popup + UI SFX) on an existing Native Slide Button
+  const withNativeTrigger = applyElementOverridePatch(
+    withNewCustom,
+    copiedId,
+    'native_menu_btn_01',
+    {
+      actionType: 'embed-popup',
+      popupTitle: 'Tur Virtual 360° Rumah Adat',
+      popupContent: 'Gunakan kursor untuk memutar panorama 360°.',
+      popupMediaUrl: 'https://faryzt.github.io/starla-360/',
+      popupMediaType: 'iframe',
+      popupAnimation: 'bounce',
+      clickSfxUrl: 'sfx:chime-gamelan',
+      hoverSfxUrl: 'sfx:hover-soft',
+      hoverEffect: 'scale',
+    }
+  );
+  const nativeOv =
+    withNativeTrigger.slides[copiedId].elementOverrides?.['native_menu_btn_01'];
+  assert.equal(nativeOv?.actionType, 'embed-popup');
+  assert.equal(nativeOv?.popupMediaType, 'iframe');
+  assert.equal(nativeOv?.popupAnimation, 'bounce');
+  assert.equal(nativeOv?.clickSfxUrl, 'sfx:chime-gamelan');
+  assert.equal(nativeOv?.hoverSfxUrl, 'sfx:hover-soft');
+
+  // 5. Configure Universal Trigger (Animated Media State Popup + UI SFX) on a Custom Uploaded Button
+  const { nextSchema: withCustomBtn, createdElement } = applyAddCanvasElement(
+    withNativeTrigger,
+    copiedId,
+    {
+      type: 'image-button',
+      label: 'Tombol Unggahan Kustom',
+      imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA',
+      clickSfxUrl: 'sfx:click-crystal',
+      hoverSfxUrl: 'sfx:hover-soft',
+      style: {
+        backgroundColor: 'transparent',
+        borderRadius: 0,
+        textPosition: 'hidden',
+        hoverEffect: 'scale',
+      },
+      action: {
+        type: 'embed-popup',
+        popupTitle: 'Video Dokumentasi Budaya',
+        popupContent: 'Tonton video dokumentasi budaya Nusantara.',
+        popupMediaUrl: 'story_content/video_6gB2P6I3G4w_22_56_1280x720.mp4',
+        popupMediaType: 'video',
+        popupAnimation: 'pop-zoom',
+      },
+    }
+  );
+  const updatedCustomSchema = applyUpdateCanvasElement(
+    withCustomBtn,
+    copiedId,
+    createdElement.id,
+    {
+      clickSfxUrl: 'sfx:success-fanfare',
+    }
+  );
+  const savedCustomEl =
+    updatedCustomSchema.slides[copiedId].canvasElements?.[0];
+  assert.equal(savedCustomEl?.action.type, 'embed-popup');
+  assert.equal(savedCustomEl?.action.popupMediaType, 'video');
+  assert.equal(savedCustomEl?.action.popupAnimation, 'pop-zoom');
+  assert.equal(savedCustomEl?.clickSfxUrl, 'sfx:success-fanfare');
+  assert.equal(savedCustomEl?.hoverSfxUrl, 'sfx:hover-soft');
+});
+
+test('AdminDashboard Lazy Loading & Bounded LRU Stage Memory Optimization', async () => {
+  const {
+    MAX_CACHED_SLIDE_RUNTIMES,
+    getAdminStageCacheStats,
+    releaseAdminStageMemoryCache,
+  } = await import('./utils/slideExactMeta');
+  const { LazyAdminDashboard } = await import('./App');
+
+  // 1. Verify LazyAdminDashboard is a valid React.lazy exotic component
+  assert.ok(LazyAdminDashboard);
+  assert.equal(
+    (LazyAdminDashboard as any).$$typeof,
+    Symbol.for('react.lazy')
+  );
+
+  // 2. Verify bounded LRU cache limit and memory release function
+  assert.equal(MAX_CACHED_SLIDE_RUNTIMES, 6);
+  releaseAdminStageMemoryCache(false);
+  const initialStats = getAdminStageCacheStats();
+  assert.equal(initialStats.cachedSlideCount, 0);
+  assert.equal(initialStats.maxCachedSlides, 6);
+  assert.equal(initialStats.hasAssetLibLoaded, false);
+  assert.equal(initialStats.hasPathsLibLoaded, false);
+});
+
+test('Recharts Quiz & Game Completion Statistics from ContentContext & Universal Slide Embeds', async () => {
+  const { computeQuizAndGameCompletionStats } = await import(
+    './features/admin/QuizGameCompletionCharts'
+  );
+  const { addSlideItem } = await import('./features/admin/adminHelpers');
+
+  const sampleStudents = [
+    {
+      id: 'USR-01',
+      name: 'Rafi Pratama',
+      school: 'SDN 1',
+      completedModules: 8,
+      quizScore: 95,
+      garudaPoints: 180,
+      status: 'Active',
+    },
+    {
+      id: 'USR-02',
+      name: 'Nadia Putri',
+      school: 'SDN 2',
+      completedModules: 5,
+      quizScore: 80,
+      garudaPoints: 90,
+      status: 'Pending',
+    },
+    {
+      id: 'USR-03',
+      name: 'Bima Sakti',
+      school: 'SDN 3',
+      completedModules: 7,
+      quizScore: 60,
+      garudaPoints: 150,
+      status: 'Active',
+    },
+  ];
+
+  // 1. Compute stats against defaultContent
+  const baseStats = computeQuizAndGameCompletionStats(
+    defaultContent,
+    sampleStudents
+  );
+  assert.equal(baseStats.totalUsers, 3);
+  assert.equal(baseStats.completedQuizUsers, 2);
+  assert.equal(baseStats.completedGameUsers, 2);
+  assert.equal(baseStats.completedBothUsers, 1);
+  assert.equal(baseStats.quizCompletionRatePct, 67);
+  assert.equal(baseStats.gameCompletionRatePct, 67);
+  assert.ok(baseStats.activeQuizQuestionCount >= 10);
+  assert.ok(baseStats.activeGarudaQuestionCount >= 5);
+  assert.equal(baseStats.moduleBreakdown.length, 5);
+  assert.equal(baseStats.userComparison.length, 3);
+
+  // 2. Mutate ContentContext (add custom Garuda question + new slide with 360/Web embed URL) and verify stats react dynamically
+  const { nextSchema: withNewEmbedSlide, createdSlideId } = addSlideItem(
+    defaultContent,
+    {
+      title: 'Slide Baru Dengan Embed 360',
+      customCategory: 'materi',
+      webObjectUrl: 'https://www.google.com/maps/embed?pb=!1m0',
+    }
+  );
+  const mutatedContent: ContentSchema = {
+    ...withNewEmbedSlide,
+    quizzes: {
+      ...withNewEmbedSlide.quizzes,
+      gameAnakGaruda: {
+        ...(withNewEmbedSlide.quizzes.gameAnakGaruda || {}),
+        statements: [
+          ...(withNewEmbedSlide.quizzes.gameAnakGaruda?.statements || []),
+          {
+            id: 'garuda-test-extra',
+            text: 'Pernyataan ekstra Game Anak Garuda',
+            targetChoice: 'Budaya yang Benar',
+          },
+        ],
+      },
+    },
+  };
+
+  const createdSlide = mutatedContent.slides[createdSlideId];
+  assert.ok(createdSlide);
+  assert.equal(
+    createdSlide.webObjectUrl,
+    'https://www.google.com/maps/embed?pb=!1m0'
+  );
+
+  const updatedStats = computeQuizAndGameCompletionStats(
+    mutatedContent,
+    sampleStudents
+  );
+  assert.equal(
+    updatedStats.activeGarudaQuestionCount,
+    baseStats.activeGarudaQuestionCount + 1
+  );
+  assert.equal(
+    updatedStats.activeTur360SlideCount,
+    baseStats.activeTur360SlideCount + 1
+  );
+});
+
+test('Debounced Canvas State Saving: createCanvasStateSaveDebouncer coalesces rapid drag/property changes and preserves 100% synchronization on flush', async () => {
+  const {
+    CANVAS_SAVE_DEBOUNCE_MS,
+    createCanvasStateSaveDebouncer,
+    applyUpdateCanvasElement,
+    applyAddCanvasElement,
+  } = await import('./features/canvas/canvasMath');
+
+  assert.equal(CANVAS_SAVE_DEBOUNCE_MS, 180);
+
+  const slideId = '5iew2M44w24';
+  const { nextSchema: withButton, createdElement } = applyAddCanvasElement(
+    defaultContent,
+    slideId,
+    {
+      type: 'image-button',
+      label: 'Tombol Debounce Uji',
+      x: 10,
+      y: 20,
+      width: 24,
+      height: 12,
+    }
+  );
+
+  const debouncer = createCanvasStateSaveDebouncer<ContentSchema>(40);
+  const committedSnapshots: ContentSchema[] = [];
+
+  // Simulate 25 rapid drag-and-drop / property changes within the debounce window
+  let current = withButton;
+  for (let step = 1; step <= 25; step++) {
+    current = applyUpdateCanvasElement(current, slideId, createdElement.id, {
+      x: 10 + step,
+      y: 20 + step,
+    });
+    debouncer.schedule(current, (latest) => {
+      committedSnapshots.push(latest);
+    });
+  }
+
+  // While within the debounce window, pending is true and commit has not fired 25 times
+  assert.equal(debouncer.isPending(), true);
+  assert.equal(committedSnapshots.length, 0);
+
+  // Wait for debounce timer to fire
+  await new Promise((resolve) => setTimeout(resolve, 65));
+  assert.equal(debouncer.isPending(), false);
+  assert.equal(committedSnapshots.length, 1);
+
+  const savedButton = committedSnapshots[0].slides[
+    slideId
+  ].canvasElements?.find((el) => el.id === createdElement.id);
+  assert.equal(savedButton?.x, 35);
+  assert.equal(savedButton?.y, 45);
+
+  // Simulate rapid property edits followed by immediate flush() (e.g. cloud save / tab switch / unload)
+  current = applyUpdateCanvasElement(current, slideId, createdElement.id, {
+    x: 72,
+    y: 64,
+  });
+  debouncer.schedule(current, (latest) => {
+    committedSnapshots.push(latest);
+  });
+  assert.equal(debouncer.isPending(), true);
+
+  debouncer.flush();
+  assert.equal(debouncer.isPending(), false);
+  assert.equal(committedSnapshots.length, 2);
+
+  const flushedButton = committedSnapshots[1].slides[
+    slideId
+  ].canvasElements?.find((el) => el.id === createdElement.id);
+  assert.equal(flushedButton?.x, 72);
+  assert.equal(flushedButton?.y, 64);
+});
+
+test('Full Button Edit Access (Resize, Move, Replace, Delete/Restore, Smart Slide Linker) & New 360° Slide Embed Parity with Slide 8 (5jTlwgcUi8o)', async () => {
+  const {
+    normalizeSmartEmbedUrl,
+    getSmartSlideMeta,
+    loadExactSlideStageData,
+    STARLA_BUTTON_PRESETS,
+  } = await import('./utils/slideExactMeta');
+  const { addSlideItem, copySlideItem } = await import(
+    './features/admin/adminHelpers'
+  );
+  const {
+    applyElementOverridePatch,
+    applyAddCanvasElement,
+    applyUpdateCanvasElement,
+    applyDeleteCanvasElement,
+  } = await import('./features/canvas/canvasMath');
+  const { transformStorylineProvideData } = await import(
+    './utils/contentRuntimeBridge'
+  );
+
+  // 1. Verify normalizeSmartEmbedUrl normalizes raw <iframe>, bare domains, and YouTube links
+  assert.equal(
+    normalizeSmartEmbedUrl(
+      '<iframe width="560" height="315" src="https://faryzt.github.io/starla-360/?view=joglo" frameborder="0"></iframe>'
+    ),
+    'https://faryzt.github.io/starla-360/?view=joglo'
+  );
+  assert.equal(
+    normalizeSmartEmbedUrl('faryzt.github.io/starla-360/'),
+    'https://faryzt.github.io/starla-360/'
+  );
+  assert.equal(
+    normalizeSmartEmbedUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
+    'https://www.youtube.com/embed/dQw4w9WgXcQ'
+  );
+
+  // 2. Verify creating a new 360° slide produces exact Slide 8 (5jTlwgcUi8o) embed parity
+  const { nextSchema: withNew360, createdSlideId: new360Id } = addSlideItem(
+    defaultContent,
+    {
+      title: 'Tur Virtual 360° Rumah Gadang',
+      webObjectUrl:
+        '<iframe src="https://faryzt.github.io/starla-360/?rumah=gadang"></iframe>',
+    }
+  );
+  const created360Slide = withNew360.slides[new360Id];
+  assert.equal(created360Slide.customCategory, 'tur360');
+  assert.equal(
+    created360Slide.webObjectUrl,
+    'https://faryzt.github.io/starla-360/?rumah=gadang'
+  );
+
+  const new360Meta = getSmartSlideMeta(new360Id, created360Slide);
+  assert.equal(new360Meta.category, 'tur360');
+  assert.equal(
+    new360Meta.webObjectUrl,
+    'https://faryzt.github.io/starla-360/?rumah=gadang'
+  );
+
+  const new360Stage = await loadExactSlideStageData(new360Id, created360Slide);
+  assert.ok(new360Stage, 'New 360° slide stage data must not be null');
+  const webObj = new360Stage.objects.find((o) => o.kind === 'webobject');
+  const backBtnObj = new360Stage.objects.find(
+    (o) => o.imageUrl === 'mobile/6UTk9YJ1Rv7.png'
+  );
+  assert.ok(webObj, 'New 360° slide stage must contain a 1280x720 webobject');
+  assert.equal(
+    webObj?.webUrl,
+    'https://faryzt.github.io/starla-360/?rumah=gadang'
+  );
+  assert.ok(
+    backBtnObj,
+    'New 360° slide stage must include Slide 8 authentic Back button'
+  );
+  assert.equal(backBtnObj?.imageUrl, 'mobile/6UTk9YJ1Rv7.png');
+
+  // 3. Verify copying Slide 8 (5jTlwgcUi8o) preserves webObjectUrl & tur360 category
+  const { nextSchema: withCopied360, createdSlideId: copied360Id } =
+    copySlideItem(withNew360, '5jTlwgcUi8o', {
+      title: 'Salinan Slide 8 Tur 360°',
+    });
+  const copied360Slide = withCopied360.slides[copied360Id];
+  assert.equal(copied360Slide.customCategory, 'tur360');
+  assert.equal(
+    copied360Slide.webObjectUrl,
+    'https://faryzt.github.io/starla-360/'
+  );
+
+  // 4. Verify Native Button full edit capabilities: Resize, Move, Replace Image, Link to Slide, Hide & Restore
+  const targetSlideForEdit = '5iew2M44w24';
+  const nativeBtnId = '5jH1rK3mN9p';
+  const afterNativeEdit = applyElementOverridePatch(
+    withCopied360,
+    targetSlideForEdit,
+    nativeBtnId,
+    {
+      xDeltaPct: 12.5,
+      yDeltaPct: -8,
+      widthPct: 22,
+      heightPct: 14,
+      customImage: STARLA_BUTTON_PRESETS[1].imageUrl,
+      customLabel: 'Tombol Menuju 360 Rumah Gadang',
+      actionType: 'goto-slide',
+      targetSlideId: new360Id,
+    }
+  );
+  const editedOv =
+    afterNativeEdit.slides[targetSlideForEdit].elementOverrides?.[nativeBtnId];
+  assert.equal(editedOv?.xDeltaPct, 12.5);
+  assert.equal(editedOv?.yDeltaPct, -8);
+  assert.equal(editedOv?.widthPct, 22);
+  assert.equal(editedOv?.heightPct, 14);
+  assert.equal(editedOv?.customImage, 'mobile/6UTk9YJ1Rv7.png');
+  assert.equal(editedOv?.actionType, 'goto-slide');
+  assert.equal(editedOv?.targetSlideId, new360Id);
+
+  // Verify transformStorylineProvideData patches width, height, xPos, yPos, and events on the native button
+  const patchedNativeJson = transformStorylineProvideData(
+    'slide',
+    JSON.stringify({
+      id: targetSlideForEdit,
+      slideLayers: [
+        {
+          objects: [
+            {
+              id: nativeBtnId,
+              xPos: 100,
+              yPos: 200,
+              width: 150,
+              height: 60,
+              events: [
+                {
+                  kind: 'onrelease',
+                  actions: [{ kind: ' jumpslide', slideId: 'old_slide' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+    afterNativeEdit
+  );
+  const parsedPatchedNative = JSON.parse(patchedNativeJson);
+  const patchedObj = parsedPatchedNative.slideLayers[0].objects[0];
+  assert.equal(patchedObj.xPos, 100 + Math.round(0.125 * 1280));
+  assert.equal(patchedObj.yPos, 200 + Math.round(-0.08 * 720));
+  assert.equal(patchedObj.width, Math.round(0.22 * 1280));
+  assert.equal(patchedObj.height, Math.round(0.14 * 720));
+
+  // Verify Hide & Restore on Native Button
+  const afterHideNative = applyElementOverridePatch(
+    afterNativeEdit,
+    targetSlideForEdit,
+    nativeBtnId,
+    { hidden: true }
+  );
+  assert.equal(
+    afterHideNative.slides[targetSlideForEdit].elementOverrides?.[nativeBtnId]
+      ?.hidden,
+    true
+  );
+  const afterRestoreNative = applyElementOverridePatch(
+    afterHideNative,
+    targetSlideForEdit,
+    nativeBtnId,
+    { hidden: false }
+  );
+  assert.equal(
+    afterRestoreNative.slides[targetSlideForEdit].elementOverrides?.[
+      nativeBtnId
+    ]?.hidden,
+    false
+  );
+
+  // 5. Verify Custom Button full edit capabilities: Add, Resize, Move, Replace Image, Link to New 360° Slide, and Delete
+  const { nextSchema: withCustomBtn, createdElement: customBtn } =
+    applyAddCanvasElement(afterRestoreNative, targetSlideForEdit, {
+      type: 'image-button',
+      label: 'Tombol Kustom 360',
+      imageUrl: STARLA_BUTTON_PRESETS[0].imageUrl,
+      x: 20,
+      y: 30,
+      width: 15,
+      height: 12,
+      action: {
+        type: 'goto-slide',
+        targetSlideId: '5jTlwgcUi8o',
+      },
+    });
+  const afterCustomEdit = applyUpdateCanvasElement(
+    withCustomBtn,
+    targetSlideForEdit,
+    customBtn.id,
+    {
+      x: 42,
+      y: 55,
+      width: 24,
+      height: 18,
+      imageUrl: STARLA_BUTTON_PRESETS[1].imageUrl,
+      label: 'Tombol Menuju Slide 360 Baru',
+      action: {
+        type: 'goto-slide',
+        targetSlideId: new360Id,
+      },
+    }
+  );
+  const updatedCustomBtn = afterCustomEdit.slides[
+    targetSlideForEdit
+  ].canvasElements?.find((c) => c.id === customBtn.id);
+  assert.equal(updatedCustomBtn?.x, 42);
+  assert.equal(updatedCustomBtn?.y, 55);
+  assert.equal(updatedCustomBtn?.width, 24);
+  assert.equal(updatedCustomBtn?.height, 18);
+  assert.equal(updatedCustomBtn?.imageUrl, 'mobile/6UTk9YJ1Rv7.png');
+  assert.equal(updatedCustomBtn?.action.type, 'goto-slide');
+  assert.equal(updatedCustomBtn?.action.targetSlideId, new360Id);
+
+  const afterCustomDelete = applyDeleteCanvasElement(
+    afterCustomEdit,
+    targetSlideForEdit,
+    customBtn.id
+  );
+  assert.equal(
+    afterCustomDelete.slides[targetSlideForEdit].canvasElements?.find(
+      (c) => c.id === customBtn.id
+    ),
+    undefined
+  );
+});
+
 
