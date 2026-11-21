@@ -350,13 +350,15 @@ export const ExactSlideStageCanvas: React.FC<ExactSlideStageCanvasProps> =
 
                   {resolvedImgUrl && (
                     <img
-                      src={resolvedImgUrl}
+                      src={
+                        resolvedImgUrl.startsWith('http') ||
+                        resolvedImgUrl.startsWith('data:') ||
+                        resolvedImgUrl.startsWith('/')
+                          ? resolvedImgUrl
+                          : `/${resolvedImgUrl}`
+                      }
                       alt={obj.altText || obj.id}
-                      className={`w-full h-full ${
-                        hasCustomReplacementImg
-                          ? 'object-contain'
-                          : 'object-fill'
-                      } pointer-events-none select-none`}
+                      className="w-full h-full object-fill pointer-events-none select-none"
                       draggable={false}
                     />
                   )}
@@ -371,6 +373,9 @@ export const ExactSlideStageCanvas: React.FC<ExactSlideStageCanvasProps> =
 
                   {isNativeSelected && !isFullScreenBackdrop && (
                     <>
+                      <span className="absolute -top-6 left-0 px-1.5 py-0.5 rounded-md bg-[#2F80ED] text-white text-[10px] font-extrabold shadow-xs whitespace-nowrap pointer-events-none z-30">
+                        {widthPct.toFixed(1)}% × {heightPct.toFixed(1)}%
+                      </span>
                       {onHideNativeObj && (
                         <button
                           type="button"
@@ -386,13 +391,47 @@ export const ExactSlideStageCanvas: React.FC<ExactSlideStageCanvasProps> =
                         </button>
                       )}
                       {onStartResizeNativeObj && (
-                        <div
-                          onPointerDown={(e) =>
-                            onStartResizeNativeObj(e, obj, widthPct, heightPct)
-                          }
-                          className="absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-[#2F80ED] border-2 border-white shadow-md cursor-nwse-resize z-30"
-                          title="Tarik untuk mengubah ukuran tombol"
-                        />
+                        <>
+                          {/* Corner SE Resize Handle */}
+                          <div
+                            onPointerDown={(e) =>
+                              onStartResizeNativeObj(
+                                e,
+                                obj,
+                                widthPct,
+                                heightPct
+                              )
+                            }
+                            className="absolute -bottom-2.5 -right-2.5 w-5 h-5 rounded-full bg-[#2F80ED] border-2 border-white shadow-md cursor-nwse-resize z-30 flex items-center justify-center hover:scale-110 transition-transform"
+                            title="Tarik sudut untuk mengubah lebar & tinggi tombol"
+                          />
+                          {/* Right Edge Width Resize Handle */}
+                          <div
+                            onPointerDown={(e) =>
+                              onStartResizeNativeObj(
+                                e,
+                                obj,
+                                widthPct,
+                                heightPct
+                              )
+                            }
+                            className="absolute top-1/2 -translate-y-1/2 -right-2 w-2.5 h-5 rounded-full bg-white border-2 border-[#2F80ED] shadow-xs cursor-ew-resize z-30 hover:scale-110 transition-transform"
+                            title="Tarik sisi kanan untuk mengubah ukuran tombol"
+                          />
+                          {/* Bottom Edge Height Resize Handle */}
+                          <div
+                            onPointerDown={(e) =>
+                              onStartResizeNativeObj(
+                                e,
+                                obj,
+                                widthPct,
+                                heightPct
+                              )
+                            }
+                            className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-5 h-2.5 rounded-full bg-white border-2 border-[#2F80ED] shadow-xs cursor-ns-resize z-30 hover:scale-110 transition-transform"
+                            title="Tarik sisi bawah untuk mengubah ukuran tombol"
+                          />
+                        </>
                       )}
                     </>
                   )}
@@ -437,8 +476,16 @@ export const ExactSlideStageCanvas: React.FC<ExactSlideStageCanvasProps> =
 
           {/* 3. CUSTOM INTERACTIVE CANVAS ELEMENTS ADDED BY ADMIN */}
           {customElements.map((el) => {
+            if (el.hidden) return null;
             const isSelected = selectedCustomElId === el.id;
             const isPureImageButton = Boolean(el.imageUrl);
+            const normalizedCustomImgUrl =
+              el.imageUrl &&
+              !el.imageUrl.startsWith('http') &&
+              !el.imageUrl.startsWith('data:') &&
+              !el.imageUrl.startsWith('/')
+                ? `/${el.imageUrl}`
+                : el.imageUrl;
             return (
               <div
                 key={el.id}
@@ -470,7 +517,7 @@ export const ExactSlideStageCanvas: React.FC<ExactSlideStageCanvasProps> =
                     ? '0px'
                     : `${el.style?.borderRadius ?? 12}px`,
                   fontSize: `${el.style?.fontSize ?? 14}px`,
-                  zIndex: 60,
+                  zIndex: isSelected ? 65 : 60,
                 }}
                 className={`absolute flex items-center justify-center ${
                   isPureImageButton ? 'p-0' : 'px-3 py-1.5 shadow-lg gap-2'
@@ -486,10 +533,10 @@ export const ExactSlideStageCanvas: React.FC<ExactSlideStageCanvasProps> =
               >
                 {isPureImageButton ? (
                   <img
-                    src={el.imageUrl}
+                    src={normalizedCustomImgUrl}
                     alt={el.label || 'Tombol Gambar'}
                     draggable={false}
-                    className="w-full h-full object-contain pointer-events-none select-none"
+                    className="w-full h-full object-fill pointer-events-none select-none"
                   />
                 ) : (
                   <span className="truncate pointer-events-none">
@@ -498,6 +545,9 @@ export const ExactSlideStageCanvas: React.FC<ExactSlideStageCanvasProps> =
                 )}
                 {isSelected && (
                   <>
+                    <span className="absolute -top-6 left-0 px-1.5 py-0.5 rounded-md bg-[#2F80ED] text-white text-[10px] font-extrabold shadow-xs whitespace-nowrap pointer-events-none z-30">
+                      {el.width.toFixed(1)}% × {el.height.toFixed(1)}%
+                    </span>
                     <button
                       type="button"
                       onPointerDown={(e) => e.stopPropagation()}
@@ -510,10 +560,23 @@ export const ExactSlideStageCanvas: React.FC<ExactSlideStageCanvasProps> =
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
+                    {/* Corner SE Resize Handle */}
                     <div
                       onPointerDown={(e) => onStartResizeCustomEl(e, el)}
-                      className="absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-blue-600 border-2 border-white shadow-md cursor-nwse-resize z-20"
-                      title="Tarik untuk mengubah ukuran tombol"
+                      className="absolute -bottom-2.5 -right-2.5 w-5 h-5 rounded-full bg-[#2F80ED] border-2 border-white shadow-md cursor-nwse-resize z-20 hover:scale-110 transition-transform"
+                      title="Tarik sudut untuk mengubah lebar & tinggi tombol"
+                    />
+                    {/* Right Edge Resize Handle */}
+                    <div
+                      onPointerDown={(e) => onStartResizeCustomEl(e, el)}
+                      className="absolute top-1/2 -translate-y-1/2 -right-2 w-2.5 h-5 rounded-full bg-white border-2 border-[#2F80ED] shadow-xs cursor-ew-resize z-20 hover:scale-110 transition-transform"
+                      title="Tarik sisi kanan untuk mengubah ukuran tombol"
+                    />
+                    {/* Bottom Edge Resize Handle */}
+                    <div
+                      onPointerDown={(e) => onStartResizeCustomEl(e, el)}
+                      className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-5 h-2.5 rounded-full bg-white border-2 border-[#2F80ED] shadow-xs cursor-ns-resize z-20 hover:scale-110 transition-transform"
+                      title="Tarik sisi bawah untuk mengubah ukuran tombol"
                     />
                   </>
                 )}

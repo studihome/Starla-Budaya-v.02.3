@@ -50,6 +50,7 @@ import {
   getConfiguredAdminPin,
   addSlideItem,
   deleteSlideItem,
+  applyStarlaMenuAndPameranUpdate,
 } from '../features/admin/adminHelpers';
 import {
   getSupabaseEnvConfig,
@@ -290,8 +291,9 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
   const [historyState, setHistoryState] = useState<
     HistoryStackState<ContentSchema>
   >(() => {
-    const initial =
-      initialSupabaseContent ?? loadContentFromLocalStorage() ?? activeContent;
+    const initial = applyStarlaMenuAndPameranUpdate(
+      initialSupabaseContent ?? loadContentFromLocalStorage() ?? activeContent
+    );
     return createInitialHistoryState(initial);
   });
 
@@ -417,17 +419,25 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
       setIsSyncing(true);
       try {
         const result = await fetchMainContentFromCloud();
+        const hydratedContent = applyStarlaMenuAndPameranUpdate(result.content);
         if (result.supabaseContent) {
-          setSupabaseContent(result.supabaseContent);
+          setSupabaseContent(
+            applyStarlaMenuAndPameranUpdate(result.supabaseContent)
+          );
         }
-        setHistoryState(createInitialHistoryState(result.content));
-        contentRef.current = result.content;
+        setHistoryState(createInitialHistoryState(hydratedContent));
+        contentRef.current = hydratedContent;
         setStorageSource(result.source);
         setLastSyncError(result.error ?? null);
-        syncContentToLiveDom(result.content);
-        return result;
+        syncContentToLiveDom(hydratedContent);
+        return {
+          ...result,
+          content: hydratedContent,
+        };
       } catch (err) {
-        const fallback = loadContentFromLocalStorage() ?? defaultContent;
+        const fallback = applyStarlaMenuAndPameranUpdate(
+          loadContentFromLocalStorage() ?? defaultContent
+        );
         setHistoryState(createInitialHistoryState(fallback));
         contentRef.current = fallback;
         setStorageSource(
@@ -448,11 +458,12 @@ export const ContentProvider: React.FC<ContentProviderProps> = ({
   // Saat aplikasi dimuat, ambil data JSON konten terbaru dari tabel Supabase `app_contents` (slug = 'main')
   useEffect(() => {
     if (initialSupabaseContent) {
-      setSupabaseContent(initialSupabaseContent);
-      setHistoryState(createInitialHistoryState(initialSupabaseContent));
-      contentRef.current = initialSupabaseContent;
+      const hydrated = applyStarlaMenuAndPameranUpdate(initialSupabaseContent);
+      setSupabaseContent(hydrated);
+      setHistoryState(createInitialHistoryState(hydrated));
+      contentRef.current = hydrated;
       setStorageSource('supabase');
-      syncContentToLiveDom(initialSupabaseContent);
+      syncContentToLiveDom(hydrated);
       return;
     }
     void refreshContentFromCloud();

@@ -5,6 +5,11 @@ export const STARLA_ADMIN_SCOPED_CSS = `
   pointer-events: none !important;
   z-index: 2147483647 !important;
 }
+#starla-minimal-admin-login-btn {
+  pointer-events: auto !important;
+  z-index: 2147483647 !important;
+  cursor: pointer !important;
+}
 .starla-saas-admin {
   position: fixed !important;
   inset: 0 !important;

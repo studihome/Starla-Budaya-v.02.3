@@ -1945,4 +1945,218 @@ test('Full Button Edit Access (Resize, Move, Replace, Delete/Restore, Smart Slid
   );
 });
 
+test('Tahap 15: 6-Month Operational Analytics, Starla Budaya Curator Profiles & 1:1 Button Resize Parity', async () => {
+  const {
+    DEFAULT_EXTRA_STATE,
+    SMART_ADMIN_PROFILES,
+    SIX_MONTH_OPERATIONAL_SUMMARY,
+    SIX_MONTH_TREND_DATA,
+  } = await import('./features/admin/adminTypes');
+  const { computeQuizAndGameCompletionStats } = await import(
+    './features/admin/QuizGameCompletionCharts'
+  );
+  const {
+    applyElementOverridePatch,
+    applyAddCanvasElement,
+    applyUpdateCanvasElement,
+  } = await import('./features/canvas/canvasMath');
+  const { transformStorylineProvideData } = await import(
+    './utils/contentRuntimeBridge'
+  );
+
+  // 1. Verify Starla Budaya Curator Profiles
+  assert.equal(SMART_ADMIN_PROFILES.length, 3);
+  assert.ok(
+    SMART_ADMIN_PROFILES[0].email.endsWith('@starlabudaya.id'),
+    'Lead curator profile must use Starla Budaya domain'
+  );
+
+  // 2. Verify 6-Month Active User Dataset & Trends
+  assert.equal(SIX_MONTH_OPERATIONAL_SUMMARY.operationalMonths, 6);
+  assert.ok(SIX_MONTH_OPERATIONAL_SUMMARY.totalRegisteredUsers >= 1500);
+  assert.ok(SIX_MONTH_OPERATIONAL_SUMMARY.partnerSchoolsCount >= 60);
+  assert.equal(SIX_MONTH_TREND_DATA.length, 6);
+  assert.equal(DEFAULT_EXTRA_STATE.analyticsList.length, 36);
+
+  const stats = computeQuizAndGameCompletionStats(
+    defaultContent,
+    DEFAULT_EXTRA_STATE.analyticsList
+  );
+  assert.equal(stats.totalUsers, 36);
+  assert.equal(stats.sixMonthTrend.length, 6);
+  assert.ok(stats.sixMonthSummary.totalRegisteredUsers >= 1548);
+  assert.ok(stats.avgQuizScore >= 85);
+  assert.ok(stats.userComparison.length <= 12);
+
+  // 3. Verify 1:1 Native Button Resize patches imagelib & states html5data dimensions
+  const slideId = '5iew2M44w24';
+  const btnId = 'btn_native_test';
+  const withResizedNative = applyElementOverridePatch(
+    defaultContent,
+    slideId,
+    btnId,
+    {
+      widthPct: 25,
+      heightPct: 15,
+    }
+  );
+  const patchedStr = transformStorylineProvideData(
+    'slide',
+    JSON.stringify({
+      id: slideId,
+      slideLayers: [
+        {
+          objects: [
+            {
+              id: btnId,
+              xPos: 100,
+              yPos: 100,
+              width: 120,
+              height: 50,
+              imagelib: [{ url: 'mobile/5dCAlHC5W8Z.png', width: 120, height: 50 }],
+              states: [
+                {
+                  name: '_default',
+                  data: { html5data: { width: 120, height: 50 } },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+    withResizedNative
+  );
+  const parsedObj = JSON.parse(patchedStr).slideLayers[0].objects[0];
+  assert.equal(parsedObj.width, Math.round(0.25 * 1280));
+  assert.equal(parsedObj.height, Math.round(0.15 * 720));
+  assert.equal(parsedObj.imagelib[0].width, Math.round(0.25 * 1280));
+  assert.equal(parsedObj.imagelib[0].height, Math.round(0.15 * 720));
+  assert.equal(
+    parsedObj.states[0].data.html5data.width,
+    Math.round(0.25 * 1280)
+  );
+  assert.equal(
+    parsedObj.states[0].data.html5data.height,
+    Math.round(0.15 * 720)
+  );
+
+  // 4. Verify Custom Added Button Resize & Persistence on Slide
+  const { nextSchema: withAddedBtn, createdElement: addedBtn } =
+    applyAddCanvasElement(defaultContent, slideId, {
+      type: 'image-button',
+      label: 'Tombol Publik 1:1',
+      imageUrl: 'mobile/5dCAlHC5W8Z.png',
+      x: 15,
+      y: 25,
+      width: 12,
+      height: 9.5,
+      action: {
+        type: 'goto-slide',
+        targetSlideId: '5jTlwgcUi8o',
+      },
+    });
+  const resizedSchema = applyUpdateCanvasElement(
+    withAddedBtn,
+    slideId,
+    addedBtn.id,
+    {
+      width: 22,
+      height: 16,
+    }
+  );
+  const finalBtn = resizedSchema.slides[slideId].canvasElements?.find(
+    (b) => b.id === addedBtn.id
+  );
+  assert.ok(finalBtn);
+  assert.equal(finalBtn?.width, 22);
+  assert.equal(finalBtn?.height, 16);
+});
+
+test('Tahap 16: Cari Tahu Button Replacement (5b7bpGxEsZl.png -> cari tahu.png), Copied 360° Pameran Slide (https://faryzt.github.io/Pameran-360/), and Tidied Menu Buttons on Slide 5iew2M44w24', async () => {
+  const {
+    applyStarlaMenuAndPameranUpdate,
+    PAMERAN_360_SLIDE_ID,
+    PAMERAN_360_EMBED_URL,
+    PAMERAN_360_BUTTON_ID,
+  } = await import('./features/admin/adminHelpers');
+  const { loadExactSlideStageData, getSmartSlideMeta } = await import(
+    './utils/slideExactMeta'
+  );
+
+  const updated = applyStarlaMenuAndPameranUpdate(defaultContent);
+
+  // 1. Verify "Tahukah Kamu?" button (5Vj2vgTep1J / 5b7bpGxEsZl.png) is replaced with "cari tahu.png" and retains link to 6OrD7bra4Ko
+  const menuSlide = updated.slides['5iew2M44w24'];
+  assert.ok(menuSlide);
+  const cariTahuImg = menuSlide.images.find(
+    (img) => img.objectId === '5Vj2vgTep1J'
+  );
+  assert.equal(cariTahuImg?.altText, 'cari tahu.png');
+  const cariTahuOv = menuSlide.elementOverrides?.['5Vj2vgTep1J'];
+  assert.ok(cariTahuOv);
+  assert.equal(cariTahuOv?.customImage, 'mobile/5b7bpGxEsZl.png');
+  assert.equal(cariTahuOv?.actionType, 'goto-slide');
+  assert.equal(cariTahuOv?.targetSlideId, '6OrD7bra4Ko');
+
+  // 2. Verify copied 360° Budaya slide for Pameran 360 exists with https://faryzt.github.io/Pameran-360/ and Home button
+  const pameranSlide = updated.slides[PAMERAN_360_SLIDE_ID];
+  assert.ok(pameranSlide, 'Copied 360° Pameran slide must exist');
+  assert.equal(pameranSlide.copiedFromSlideId, '5jTlwgcUi8o');
+  assert.equal(pameranSlide.customCategory, 'tur360');
+  assert.equal(pameranSlide.webObjectUrl, PAMERAN_360_EMBED_URL);
+
+  const pameranMeta = getSmartSlideMeta(PAMERAN_360_SLIDE_ID, pameranSlide);
+  assert.equal(pameranMeta.category, 'tur360');
+  assert.equal(pameranMeta.webObjectUrl, 'https://faryzt.github.io/Pameran-360/');
+
+  const pameranStage = await loadExactSlideStageData(
+    PAMERAN_360_SLIDE_ID,
+    pameranSlide
+  );
+  assert.ok(pameranStage);
+  const webObj = pameranStage.objects.find((o) => o.kind === 'webobject');
+  const homeBtn = pameranStage.objects.find(
+    (o) => o.imageUrl === 'mobile/6UTk9YJ1Rv7.png'
+  );
+  assert.equal(webObj?.webUrl, 'https://faryzt.github.io/Pameran-360/');
+  assert.ok(homeBtn, 'Copied 360° Pameran slide must include Home button');
+
+  // 3. Verify "pameran.png" button is added directly below 360° Budaya button and all 5 menu buttons are tidily aligned without overlap
+  const pameranBtn = menuSlide.canvasElements?.find(
+    (el) => el.id === PAMERAN_360_BUTTON_ID
+  );
+  assert.ok(pameranBtn, '360° Pameran button must exist on Slide 5iew2M44w24');
+  assert.equal(pameranBtn?.imageUrl, 'mobile/pameran.png');
+  assert.equal(pameranBtn?.action.type, 'goto-slide');
+  assert.equal(pameranBtn?.action.targetSlideId, PAMERAN_360_SLIDE_ID);
+
+  // Check that all 4 native buttons keep their exact horizontal xPos (xDeltaPct: 0) and have tidied vertical spacing so 360° Pameran sits directly below 360° Budaya without overlap
+  const sinemaOv = menuSlide.elementOverrides?.['5ZPukeMFffY']!;
+  const bermainOv = menuSlide.elementOverrides?.['5cPSgbCeIlr']!;
+  const budaya360Ov = menuSlide.elementOverrides?.['6afmjIda5Z2']!;
+
+  assert.equal(sinemaOv.xDeltaPct, 0);
+  assert.equal(cariTahuOv.xDeltaPct, 0);
+  assert.equal(bermainOv.xDeltaPct, 0);
+  assert.equal(budaya360Ov.xDeltaPct, 0);
+
+  const sinemaTop = (104 / 720) * 100 + (sinemaOv.yDeltaPct || 0);
+  const cariTahuTop = (208 / 720) * 100 + (cariTahuOv.yDeltaPct || 0);
+  const bermainTop = (360 / 720) * 100 + (bermainOv.yDeltaPct || 0);
+  const budaya360Top = (480 / 720) * 100 + (budaya360Ov.yDeltaPct || 0);
+  const pameranTop = pameranBtn!.y;
+
+  assert.ok(sinemaTop < cariTahuTop);
+  assert.ok(cariTahuTop < bermainTop);
+  assert.ok(bermainTop < budaya360Top);
+  assert.ok(
+    budaya360Top < pameranTop,
+    '360° Pameran button must be positioned directly below 360° Budaya button'
+  );
+  assert.ok(
+    pameranTop + pameranBtn!.height <= 98,
+    'All 5 menu buttons must fit within the 720px slide height'
+  );
+});
 

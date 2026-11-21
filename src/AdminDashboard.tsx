@@ -43,6 +43,7 @@ import {
   Sparkles,
   Link2,
   Layers,
+  Shield,
   Play,
   ChevronLeft,
   ChevronRight,
@@ -230,23 +231,25 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   const [isFilmstripExpanded, setIsFilmstripExpanded] =
     useState<boolean>(false);
 
-  // Smart Admin Profiles & Smart Login Gate State (imported from adminTypes)
+  // Smart Admin Profiles & Secure PIN Login Gate State
   const [isPinAuthenticated, setIsPinAuthenticated] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
+    if (typeof window === 'undefined') return false;
     try {
       if (window.sessionStorage.getItem('starla_admin_locked_v2') === 'true') {
         return false;
       }
-      return true;
+      return (
+        window.sessionStorage.getItem('starla_admin_smart_auth_v2') === 'true'
+      );
     } catch {
-      return true;
+      return false;
     }
   });
   const [selectedAdminProfileId, setSelectedAdminProfileId] = useState<string>(
-    'jane-cooper'
+    SMART_ADMIN_PROFILES[0]?.id || 'ratna-saraswati'
   );
   const [loginEmailInput, setLoginEmailInput] = useState<string>(
-    'jane234@example.com'
+    SMART_ADMIN_PROFILES[0]?.email || 'ratna.kurator@starlabudaya.id'
   );
   const [loginPinInput, setLoginPinInput] = useState<string>('');
   const [showLoginPin, setShowLoginPin] = useState<boolean>(false);
@@ -306,7 +309,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
   const [extraState, setExtraState] = useState<AdminExtraState>(() => {
     const parsed = loadPersistentAdminExtraState<any>();
     if (parsed && typeof parsed === 'object') {
-      const migrated360: Tur360EmbedItem[] = Array.isArray(parsed.tur360List)
+      const parsed360: Tur360EmbedItem[] = Array.isArray(parsed.tur360List)
         ? parsed.tur360List.map((item: any, idx: number) => ({
             id: item.id || `360-0${idx + 1}`,
             embedUrl:
@@ -318,14 +321,30 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
             buttonSlideId: item.buttonSlideId || '5iew2M44w24',
             buttonElementId: item.buttonElementId,
           }))
-        : DEFAULT_EXTRA_STATE.tur360List;
+        : [];
+      const merged360: Tur360EmbedItem[] = [...parsed360];
+      for (const defItem of DEFAULT_EXTRA_STATE.tur360List) {
+        if (
+          !merged360.some(
+            (existing) =>
+              existing.slideId === defItem.slideId ||
+              existing.embedUrl === defItem.embedUrl
+          )
+        ) {
+          merged360.push(defItem);
+        }
+      }
+      const migratedAnalytics =
+        Array.isArray(parsed.analyticsList) &&
+        parsed.analyticsList.length >= DEFAULT_EXTRA_STATE.analyticsList.length
+          ? parsed.analyticsList
+          : DEFAULT_EXTRA_STATE.analyticsList;
       return {
         ...DEFAULT_EXTRA_STATE,
         ...parsed,
         tur360List:
-          migrated360.length > 0
-            ? migrated360
-            : DEFAULT_EXTRA_STATE.tur360List,
+          merged360.length > 0 ? merged360 : DEFAULT_EXTRA_STATE.tur360List,
+        analyticsList: migratedAnalytics,
       };
     }
     return DEFAULT_EXTRA_STATE;
@@ -2421,7 +2440,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
 
       if (!isValid) {
         setLoginError(
-          'PIN tidak sesuai. Gunakan PIN 1234 / 123456 atau klik Smart Instant Login di bawah.'
+          'PIN otorisasi tidak valid. Silakan periksa kembali PIN Keamanan Studio Anda.'
         );
         return;
       }
@@ -2547,10 +2566,10 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
 
   return (
     <AdminDataContext.Provider value={contextValue}>
-      {/* PUBLIC VIEW: 100% IDENTICAL ZERO-REGRESSION (NO FLOATING ADMIN STUDIO BUTTON IN PUBLIC) */}
+      {/* PUBLIC VIEW */}
       {children}
 
-      {/* MODERN CLEAN WHITE PUZZLER ADMIN DASHBOARD & SMART LOGIN OVERLAY */}
+      {/* MODERN CLEAN WHITE STARLA BUDAYA ADMIN DASHBOARD & SECURE LOGIN OVERLAY */}
       {isAdminOpen &&
         targetPortal &&
         createPortal(
@@ -2611,7 +2630,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
               />
             )}
 
-            {/* 1. LEFT SIDEBAR (PUZZLER WHITE W-64 WITH #2F80ED BLUE ACTIVE PILL & BOTTOM LOG OUT) */}
+            {/* 1. LEFT SIDEBAR (STARLA BUDAYA MINIMALIST WHITE W-64 WITH #2F80ED BLUE ACTIVE PILL & BOTTOM LOG OUT) */}
             <aside
               className={`fixed lg:static inset-y-0 left-0 w-64 bg-white border-r border-slate-100/90 flex flex-col justify-between shrink-0 z-40 transition-transform duration-200 ${
                 mobileSidebarOpen
@@ -2620,19 +2639,18 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
               }`}
             >
               <div>
-                {/* Puzzler Brand Header (1:1 Isometric 3D Puzzle Cube Logo + Bold Serif Wordmark) */}
-                <div className="h-20 px-7 flex items-center justify-between">
+                {/* Starla Budaya Brand Header */}
+                <div className="h-20 px-6 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <PuzzlerCubeLogo className="w-9 h-9" />
-                    <h1
-                      style={{
-                        fontFamily:
-                          'Georgia, "Playfair Display", "Times New Roman", serif',
-                      }}
-                      className="text-[22px] font-black tracking-tight text-slate-900 leading-none"
-                    >
-                      Puzzler
-                    </h1>
+                    <PuzzlerCubeLogo className="w-9 h-9 shrink-0" />
+                    <div>
+                      <h1 className="text-[18px] font-black tracking-tight text-slate-900 leading-none">
+                        Starla Budaya
+                      </h1>
+                      <p className="text-[10px] font-bold text-[#2F80ED] mt-1 tracking-wide">
+                        CMS &amp; Analitik Nusantara
+                      </p>
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -2689,14 +2707,14 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                 </nav>
               </div>
 
-              {/* Bottom Puzzler Log out Button (1:1 Reference Photo) */}
+              {/* Bottom Starla Budaya Log out & View Public Slide Button */}
               <div className="p-4 border-t border-slate-100/70">
                 <button
                   type="button"
                   id="close-admin-dashboard-btn"
                   onClick={() => {
                     flushCanvasDebouncedSave();
-                    if (activeTab === 'desain' && activeDesignSlideId) {
+                    if (activeDesignSlideId) {
                       navigateToPublicSlide(activeDesignSlideId);
                     }
                     setIsAdminOpen(false);
@@ -5965,72 +5983,125 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
                                         className="w-full px-2 py-1 rounded-lg bg-white border border-blue-200 text-xs font-bold"
                                       />
                                     </div>
-                                    <div>
-                                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
-                                        Lebar (%)
-                                      </label>
-                                      <input
-                                        type="number"
-                                        min={3}
-                                        max={95}
-                                        value={sel.width}
-                                        onChange={(e) => {
-                                          const val = Math.max(
-                                            3,
-                                            Math.min(
-                                              95,
-                                              Number(e.target.value) || 10
-                                            )
-                                          );
-                                          updateCanvasPropertyDebounced(
-                                            (prev) =>
-                                              applyUpdateCanvasElement(
-                                                prev,
-                                                activeDesignSlide.id,
-                                                sel.id,
-                                                {
-                                                  width: val,
-                                                }
+                                      <div>
+                                        <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                                          Lebar (%)
+                                        </label>
+                                        <input
+                                          id="custom-btn-width-input"
+                                          type="number"
+                                          step="0.5"
+                                          min={2}
+                                          max={95}
+                                          value={sel.width}
+                                          onChange={(e) => {
+                                            const val = Math.max(
+                                              2,
+                                              Math.min(
+                                                95,
+                                                Number(e.target.value) || 10
                                               )
-                                          );
-                                        }}
-                                        className="w-full px-2 py-1 rounded-lg bg-white border border-blue-200 text-xs font-bold"
-                                      />
+                                            );
+                                            updateCanvasPropertyDebounced(
+                                              (prev) =>
+                                                applyUpdateCanvasElement(
+                                                  prev,
+                                                  activeDesignSlide.id,
+                                                  sel.id,
+                                                  {
+                                                    width: val,
+                                                  }
+                                                )
+                                            );
+                                          }}
+                                          className="w-full px-2 py-1 rounded-lg bg-white border border-blue-200 text-xs font-bold"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                                          Tinggi (%)
+                                        </label>
+                                        <input
+                                          id="custom-btn-height-input"
+                                          type="number"
+                                          step="0.5"
+                                          min={2}
+                                          max={95}
+                                          value={sel.height}
+                                          onChange={(e) => {
+                                            const val = Math.max(
+                                              2,
+                                              Math.min(
+                                                95,
+                                                Number(e.target.value) || 8
+                                              )
+                                            );
+                                            updateCanvasPropertyDebounced(
+                                              (prev) =>
+                                                applyUpdateCanvasElement(
+                                                  prev,
+                                                  activeDesignSlide.id,
+                                                  sel.id,
+                                                  {
+                                                    height: val,
+                                                  }
+                                                )
+                                            );
+                                          }}
+                                          className="w-full px-2 py-1 rounded-lg bg-white border border-blue-200 text-xs font-bold"
+                                        />
+                                      </div>
                                     </div>
-                                    <div>
-                                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
-                                        Tinggi (%)
-                                      </label>
-                                      <input
-                                        type="number"
-                                        min={3}
-                                        max={95}
-                                        value={sel.height}
-                                        onChange={(e) => {
-                                          const val = Math.max(
-                                            3,
-                                            Math.min(
-                                              95,
-                                              Number(e.target.value) || 8
-                                            )
-                                          );
-                                          updateCanvasPropertyDebounced(
-                                            (prev) =>
-                                              applyUpdateCanvasElement(
-                                                prev,
-                                                activeDesignSlide.id,
-                                                sel.id,
-                                                {
-                                                  height: val,
-                                                }
+
+                                    {/* Quick Size Presets for Custom Buttons + Open in Public View */}
+                                    <div className="flex flex-wrap items-center justify-between gap-1 pt-1">
+                                      <div className="flex flex-wrap items-center gap-1">
+                                        <span className="text-[10px] font-bold text-slate-500 mr-1">
+                                          Ukuran Cepat:
+                                        </span>
+                                        {[
+                                          { label: 'Kecil', w: 9, h: 7 },
+                                          { label: 'Sedang', w: 12, h: 9.5 },
+                                          { label: 'Besar', w: 16, h: 12 },
+                                          { label: 'XL', w: 22, h: 16 },
+                                        ].map((sz) => (
+                                          <button
+                                            key={sz.label}
+                                            type="button"
+                                            onClick={() =>
+                                              updateContent((prev) =>
+                                                applyUpdateCanvasElement(
+                                                  prev,
+                                                  activeDesignSlide.id,
+                                                  sel.id,
+                                                  {
+                                                    width: sz.w,
+                                                    height: sz.h,
+                                                  }
+                                                )
                                               )
+                                            }
+                                            className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#2F80ED] text-[10px] font-bold cursor-pointer"
+                                          >
+                                            {sz.label} ({sz.w}×{sz.h}%)
+                                          </button>
+                                        ))}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          flushCanvasDebouncedSave();
+                                          navigateToPublicSlide(
+                                            activeDesignSlide.id
                                           );
+                                          setIsAdminOpen(false);
                                         }}
-                                        className="w-full px-2 py-1 rounded-lg bg-white border border-blue-200 text-xs font-bold"
-                                      />
+                                        className="px-2.5 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-extrabold cursor-pointer"
+                                      >
+                                        👁️ Lihat di Layar Publik
+                                      </button>
                                     </div>
                                   </div>
-                                </div>
 
                                 {/* 3. GANTI GAMBAR & LABEL TOMBOL (REPLACE) */}
                                 <div className="p-2.5 rounded-xl bg-white/95 border border-blue-200 space-y-2">

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
+    "dev": "esbuild src/main.tsx --bundle --outfile=html5/lib/scripts/starla-content-bridge.js --format=iife --target=es2020 --minify && node server.js",
     "build": "tsc --noEmit && esbuild src/main.tsx --bundle --outfile=html5/lib/scripts/starla-content-bridge.js --format=iife --target=es2020 --minify && node --check server.js",
     "lint": "tsc --noEmit && node --check server.js"
   },

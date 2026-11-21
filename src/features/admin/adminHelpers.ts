@@ -1098,3 +1098,224 @@ export function duplicateSlideItem(
   };
 }
 
+export const PAMERAN_360_SLIDE_ID = 'tur360_pameran_budaya';
+export const PAMERAN_360_EMBED_URL = 'https://faryzt.github.io/Pameran-360/';
+export const PAMERAN_360_BUTTON_ID = 'btn_pameran_360_budaya';
+
+/**
+ * Menerapkan pembaruan Menu Pilihan Materi (`5iew2M44w24`) & Slide Salinan 360° Pameran (`tur360_pameran_budaya`):
+ * 1. Mengganti tombol "Tahukah Kamu?" (`5Vj2vgTep1J` / `5b7bpGxEsZl.png`) dengan tombol "Cari Tahu" (`cari tahu.png`) dengan mempertahankan tautan ke `6OrD7bra4Ko`.
+ * 2. Menyalin Slide 360° Budaya (`5jTlwgcUi8o`) menjadi `tur360_pameran_budaya` dengan tautan embed `https://faryzt.github.io/Pameran-360/` lengkap dengan tombol Home.
+ * 3. Menambahkan tombol "360° Pameran" (`pameran.png`) tepat di bawah tombol "360° Budaya" serta merapikan susunan vertikal ke-5 tombol menu agar presisi dan bebas tumpang-tindih.
+ */
+export function applyStarlaMenuAndPameranUpdate(
+  schema: ContentSchema
+): ContentSchema {
+  if (!schema || !schema.slides) return schema;
+  let nextSchema = schema;
+
+  // 1. Copy Slide 360° Budaya (5jTlwgcUi8o) -> tur360_pameran_budaya with https://faryzt.github.io/Pameran-360/
+  if (!nextSchema.slides[PAMERAN_360_SLIDE_ID]) {
+    const copied = copySlideItem(nextSchema, '5jTlwgcUi8o', {
+      id: PAMERAN_360_SLIDE_ID,
+      title: 'Eksplorasi Tur Virtual 360° Pameran Budaya',
+      webObjectUrl: PAMERAN_360_EMBED_URL,
+      customCategory: 'tur360',
+      backgroundUrl: 'mobile/Slide5znCNCeGBCx.jpg',
+    });
+    nextSchema = copied.nextSchema;
+    if (nextSchema.slides[PAMERAN_360_SLIDE_ID]) {
+      nextSchema = {
+        ...nextSchema,
+        slides: {
+          ...nextSchema.slides,
+          [PAMERAN_360_SLIDE_ID]: {
+            ...nextSchema.slides[PAMERAN_360_SLIDE_ID],
+            instructions: [
+              'Penjelajahan panorama interaktif 360° Pameran Budaya Nusantara melalui tautan embed web interaktif (https://faryzt.github.io/Pameran-360/).',
+            ],
+            webObjectUrl: PAMERAN_360_EMBED_URL,
+            customCategory: 'tur360',
+            copiedFromSlideId: '5jTlwgcUi8o',
+          },
+        },
+      };
+    }
+  } else {
+    const existingPameran = nextSchema.slides[PAMERAN_360_SLIDE_ID];
+    if (
+      !existingPameran.webObjectUrl ||
+      existingPameran.customCategory !== 'tur360' ||
+      existingPameran.copiedFromSlideId !== '5jTlwgcUi8o'
+    ) {
+      nextSchema = {
+        ...nextSchema,
+        slides: {
+          ...nextSchema.slides,
+          [PAMERAN_360_SLIDE_ID]: {
+            ...existingPameran,
+            webObjectUrl:
+              existingPameran.webObjectUrl || PAMERAN_360_EMBED_URL,
+            customCategory: 'tur360',
+            copiedFromSlideId: '5jTlwgcUi8o',
+          },
+        },
+      };
+    }
+    if (!nextSchema.slideOrder.includes(PAMERAN_360_SLIDE_ID)) {
+      nextSchema = {
+        ...nextSchema,
+        slideOrder: [...nextSchema.slideOrder, PAMERAN_360_SLIDE_ID],
+      };
+    }
+  }
+
+  // 2. Replace 5Vj2vgTep1J (5b7bpGxEsZl.png) with "cari tahu.png", keep original horizontal xPos (xDeltaPct: 0) and native SVG rendering, and tidy vertical spacing (yDeltaPct) so all 5 menu buttons fit cleanly on Slide 5iew2M44w24
+  const menuSlide = nextSchema.slides['5iew2M44w24'];
+  if (!menuSlide) return nextSchema;
+
+  const rawExistingOverrides = menuSlide.elementOverrides || {};
+  const existingCanvasEls = menuSlide.canvasElements || [];
+
+  // Clean up any legacy auto-tidied position/size shifts from previous sessions so native buttons use the clean vertical stack with native SVG width/height
+  const LEGACY_AUTO_Y_DELTAS = new Set([0, -5, -3.6111, -8.6111, -8.8889]);
+  const cleanNativeOverride = (
+    id: string,
+    defaults: NonNullable<SlideContentItem['elementOverrides']>[string]
+  ) => {
+    const prev = rawExistingOverrides[id];
+    if (!prev) return defaults;
+    const isLegacyAutoShift =
+      (typeof prev.yDeltaPct === 'number' &&
+        LEGACY_AUTO_Y_DELTAS.has(Number(prev.yDeltaPct.toFixed(4)))) ||
+      prev.widthPct !== undefined ||
+      prev.heightPct !== undefined;
+    if (isLegacyAutoShift) {
+      return {
+        ...defaults,
+      };
+    }
+    return {
+      ...defaults,
+      ...prev,
+    };
+  };
+
+  const defaultNativeOverrides: NonNullable<
+    SlideContentItem['elementOverrides']
+  > = {
+    // 1. SINEMA (5ZPukeMFffY) — original xPos: 746, width: 306, height: 102; tidied yPos: 56 (-48px = -6.6667%)
+    '5ZPukeMFffY': cleanNativeOverride('5ZPukeMFffY', {
+      xDeltaPct: 0,
+      yDeltaPct: -6.6667,
+      customLabel: 'Sinema',
+      actionType: 'goto-slide' as const,
+      targetSlideId: '6IgV5Xf2ecV',
+    }),
+    // 2. CARI TAHU (5Vj2vgTep1J) — original xPos: 719, width: 360, height: 154; tidied yPos: 152 (-56px = -7.7778%), image replaced by cari tahu.png (5b7bpGxEsZl.png), link to 6OrD7bra4Ko
+    '5Vj2vgTep1J': cleanNativeOverride('5Vj2vgTep1J', {
+      xDeltaPct: 0,
+      yDeltaPct: -7.7778,
+      customImage: 'mobile/5b7bpGxEsZl.png',
+      customLabel: 'Cari Tahu',
+      actionType: 'goto-slide' as const,
+      targetSlideId: '6OrD7bra4Ko',
+    }),
+    // 3. BERMAIN (5cPSgbCeIlr) — original xPos: 743, width: 312, height: 123; tidied yPos: 299 (-61px = -8.4722%)
+    '5cPSgbCeIlr': cleanNativeOverride('5cPSgbCeIlr', {
+      xDeltaPct: 0,
+      yDeltaPct: -8.4722,
+      customLabel: 'Bermain',
+      actionType: 'goto-slide' as const,
+      targetSlideId: '6eHtnAfM3bY',
+    }),
+    // 4. 360° BUDAYA (6afmjIda5Z2) — original xPos: 691, width: 416, height: 136; tidied yPos: 434 (-46px = -6.3889%)
+    '6afmjIda5Z2': cleanNativeOverride('6afmjIda5Z2', {
+      xDeltaPct: 0,
+      yDeltaPct: -6.3889,
+      customLabel: '360° Budaya',
+      actionType: 'goto-slide' as const,
+      targetSlideId: '5jTlwgcUi8o',
+    }),
+  };
+
+  if (!defaultNativeOverrides['5Vj2vgTep1J'].customImage) {
+    defaultNativeOverrides['5Vj2vgTep1J'].customImage =
+      'mobile/5b7bpGxEsZl.png';
+  }
+
+  const pameranButtonSpec = {
+    id: PAMERAN_360_BUTTON_ID,
+    type: 'image-button' as const,
+    label: '360° Pameran',
+    x: 55.2344,
+    y: 80,
+    width: 30,
+    height: 15.8333,
+    zIndex: 35,
+    imageUrl: 'mobile/pameran.png',
+    clickSfxUrl: 'story_content/6cE4jPpZoR1_44100_56_0.mp3',
+    style: {
+      backgroundColor: 'transparent',
+      textColor: '#ffffff',
+      borderColor: 'transparent',
+      borderWidth: 0,
+      borderRadius: 0,
+      fontSize: 16,
+      fontWeight: 'bold' as const,
+      textAlign: 'center' as const,
+      opacity: 1,
+      textPosition: 'hidden' as const,
+    },
+    action: {
+      type: 'goto-slide' as const,
+      targetSlideId: PAMERAN_360_SLIDE_ID,
+    },
+  };
+
+  const hasPameranButton = existingCanvasEls.some(
+    (el) =>
+      el.id === PAMERAN_360_BUTTON_ID ||
+      el.action?.targetSlideId === PAMERAN_360_SLIDE_ID
+  );
+
+  // 5. 360° PAMERAN (pameran.png) tepat di bawah tombol 360° Budaya (yPos: 434, height: 136 -> bottom: 570) -> x=707 (55.2344%), y=576 (80%), w=384 (30%), h=114 (15.8333%)
+  const nextCanvasEls = hasPameranButton
+    ? existingCanvasEls.map((el) =>
+        el.id === PAMERAN_360_BUTTON_ID &&
+        (Math.abs(el.y - 74.4444) < 0.05 || Math.abs(el.y - 83.3333) < 0.05)
+          ? {
+              ...el,
+              x: pameranButtonSpec.x,
+              y: pameranButtonSpec.y,
+              width: pameranButtonSpec.width,
+              height: pameranButtonSpec.height,
+            }
+          : el
+      )
+    : [...existingCanvasEls, pameranButtonSpec];
+
+  const updatedImages = (menuSlide.images || []).map((im) =>
+    im.objectId === '5Vj2vgTep1J'
+      ? { ...im, altText: 'cari tahu.png', url: 'story_content/5b7bpGxEsZl.png' }
+      : im
+  );
+
+  return {
+    ...nextSchema,
+    slides: {
+      ...nextSchema.slides,
+      '5iew2M44w24': {
+        ...menuSlide,
+        images: updatedImages,
+        elementOverrides: {
+          ...rawExistingOverrides,
+          ...defaultNativeOverrides,
+        },
+        canvasElements: nextCanvasEls,
+      },
+    },
+  };
+}
+
+

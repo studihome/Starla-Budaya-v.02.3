@@ -721,11 +721,37 @@ export function transformStorylineProvideData(
                   modified = true;
                 }
                 if (typeof ov.widthPct === 'number' && ov.widthPct > 0) {
-                  o.width = Math.round((ov.widthPct / 100) * 1280);
+                  const newW = Math.round((ov.widthPct / 100) * 1280);
+                  o.width = newW;
+                  if (Array.isArray(o.imagelib)) {
+                    for (const im of o.imagelib) {
+                      if (im && typeof im === 'object') im.width = newW;
+                    }
+                  }
+                  if (Array.isArray(o.states)) {
+                    for (const st of o.states) {
+                      if (st?.data?.html5data) {
+                        st.data.html5data.width = newW;
+                      }
+                    }
+                  }
                   modified = true;
                 }
                 if (typeof ov.heightPct === 'number' && ov.heightPct > 0) {
-                  o.height = Math.round((ov.heightPct / 100) * 720);
+                  const newH = Math.round((ov.heightPct / 100) * 720);
+                  o.height = newH;
+                  if (Array.isArray(o.imagelib)) {
+                    for (const im of o.imagelib) {
+                      if (im && typeof im === 'object') im.height = newH;
+                    }
+                  }
+                  if (Array.isArray(o.states)) {
+                    for (const st of o.states) {
+                      if (st?.data?.html5data) {
+                        st.data.html5data.height = newH;
+                      }
+                    }
+                  }
                   modified = true;
                 }
                 // Record that this object's initial JSON coordinates already include these deltas
@@ -966,6 +992,7 @@ export function applySlideElementOverridesToDom(
       el.style.backgroundSize = '';
       el.style.backgroundRepeat = '';
       el.style.backgroundPosition = '';
+      el.removeAttribute('data-starla-custom-bg');
       if (el.dataset.starlaOrigW && el.dataset.starlaOrigH) {
         const origW = parseFloat(el.dataset.starlaOrigW) || 100;
         const origH = parseFloat(el.dataset.starlaOrigH) || 60;
@@ -989,46 +1016,69 @@ export function applySlideElementOverridesToDom(
     return;
   }
 
+  // Inject CSS rule to hide internal <svg>/<img> visually when data-starla-custom-bg="true"
+  // without setting inline opacity: 0 on <svg> (so Canvg svgHit still parses an opaque shape)
+  if (document.head && !document.getElementById('starla-custom-bg-css')) {
+    const styleEl = document.createElement('style');
+    styleEl.id = 'starla-custom-bg-css';
+    styleEl.textContent =
+      '[data-starla-custom-bg="true"] svg, [data-starla-custom-bg="true"] img:not([data-starla-keep-img="true"]) { opacity: 0 !important; }';
+    document.head.appendChild(styleEl);
+  }
+
   // Guard all root <svg> elements inside #slide-window against percentage width/height
   // because Storyline's Canvg svgHit parses svg.parentNode.innerHTML on a detached canvas
   // where viewPort.viewPorts is empty until root <svg> pixel width/height are evaluated.
-  slideWindow.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
-    const attrW = svg.getAttribute('width') || '';
-    const attrH = svg.getAttribute('height') || '';
-    const styleW = svg.style.width || '';
-    const styleH = svg.style.height || '';
-    if (
-      attrW.includes('%') ||
-      attrH.includes('%') ||
-      styleW.includes('%') ||
-      styleH.includes('%')
-    ) {
-      const host =
-        svg.closest<HTMLElement>('[data-model-id]') ||
-        svg.parentElement ||
-        slideWindow;
-      const vb = (svg.getAttribute('viewBox') || '')
-        .trim()
-        .split(/[\s,]+/)
-        .map(Number);
-      const fallbackW =
-        (!host.style.width.includes('%') ? parseFloat(host.style.width) : 0) ||
-        host.offsetWidth ||
-        (vb.length === 4 && vb[2] > 0 ? vb[2] : 100);
-      const fallbackH =
-        (!host.style.height.includes('%')
-          ? parseFloat(host.style.height)
-          : 0) ||
-        host.offsetHeight ||
-        (vb.length === 4 && vb[3] > 0 ? vb[3] : 60);
-      const pxW = Math.max(4, Math.round(fallbackW));
-      const pxH = Math.max(4, Math.round(fallbackH));
-      svg.setAttribute('width', `${pxW}`);
-      svg.setAttribute('height', `${pxH}`);
-      svg.style.width = `${pxW}px`;
-      svg.style.height = `${pxH}px`;
-    }
-  });
+  // Only scan <svg> elements for percentage width/height if at least one slide actually has a widthPct/heightPct override
+  const hasAnySizeOverride = Object.values(activeContent.slides).some(
+    (s) =>
+      s.elementOverrides &&
+      Object.values(s.elementOverrides).some(
+        (ov) =>
+          (typeof ov.widthPct === 'number' && ov.widthPct > 0) ||
+          (typeof ov.heightPct === 'number' && ov.heightPct > 0)
+      )
+  );
+
+  if (hasAnySizeOverride) {
+    slideWindow.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
+      const attrW = svg.getAttribute('width') || '';
+      const attrH = svg.getAttribute('height') || '';
+      const styleW = svg.style.width || '';
+      const styleH = svg.style.height || '';
+      if (
+        attrW.includes('%') ||
+        attrH.includes('%') ||
+        styleW.includes('%') ||
+        styleH.includes('%')
+      ) {
+        const host =
+          svg.closest<HTMLElement>('[data-model-id]') ||
+          svg.parentElement ||
+          slideWindow;
+        const vb = (svg.getAttribute('viewBox') || '')
+          .trim()
+          .split(/[\s,]+/)
+          .map(Number);
+        const fallbackW =
+          (!host.style.width.includes('%') ? parseFloat(host.style.width) : 0) ||
+          host.offsetWidth ||
+          (vb.length === 4 && vb[2] > 0 ? vb[2] : 100);
+        const fallbackH =
+          (!host.style.height.includes('%')
+            ? parseFloat(host.style.height)
+            : 0) ||
+          host.offsetHeight ||
+          (vb.length === 4 && vb[3] > 0 ? vb[3] : 60);
+        const pxW = Math.max(4, Math.round(fallbackW));
+        const pxH = Math.max(4, Math.round(fallbackH));
+        svg.setAttribute('width', `${pxW}`);
+        svg.setAttribute('height', `${pxH}`);
+        svg.style.width = `${pxW}px`;
+        svg.style.height = `${pxH}px`;
+      }
+    });
+  }
 
   const winShift =
     typeof window !== 'undefined'
@@ -1055,6 +1105,14 @@ export function applySlideElementOverridesToDom(
     }
   }
 
+  // Native default goto targets on 5iew2M44w24 so untouched native buttons keep 100% native Storyline behavior
+  const NATIVE_DEFAULT_TARGETS: Record<string, string> = {
+    '5ZPukeMFffY': '6IgV5Xf2ecV',
+    '5Vj2vgTep1J': '6OrD7bra4Ko',
+    '5cPSgbCeIlr': '6eHtnAfM3bY',
+    '6afmjIda5Z2': '5jTlwgcUi8o',
+  };
+
   for (const slide of Object.values(activeContent.slides)) {
     const overrides = slide.elementOverrides;
     const hiddenIds = slide.hiddenElementIds || [];
@@ -1071,6 +1129,39 @@ export function applySlideElementOverridesToDom(
     ]);
 
     for (const elementId of allIds) {
+      const ov = overrides?.[elementId];
+      const isHidden = Boolean(ov?.hidden || hiddenIds.includes(elementId));
+      const isNativeSameAsset =
+        elementId === '5Vj2vgTep1J' &&
+        ov?.customImage === 'mobile/5b7bpGxEsZl.png';
+      const hasEffectiveCustomImage = Boolean(
+        ov?.customImage && !isNativeSameAsset
+      );
+      const isNativeDefaultTarget =
+        ov?.actionType === 'goto-slide' &&
+        Boolean(ov.targetSlideId) &&
+        NATIVE_DEFAULT_TARGETS[elementId] === ov.targetSlideId;
+
+      // Fast skip: if element has no visual or behavioral delta from its native Storyline definition, do not query or mutate DOM
+      if (
+        !isHidden &&
+        ov &&
+        !ov.xDeltaPct &&
+        !ov.yDeltaPct &&
+        !ov.widthPct &&
+        !ov.heightPct &&
+        !hasEffectiveCustomImage &&
+        ov.customText === undefined &&
+        (!ov.actionType ||
+          ov.actionType === 'default' ||
+          isNativeDefaultTarget) &&
+        !ov.clickSfxUrl &&
+        !ov.hoverSfxUrl &&
+        !ov.hoverEffect
+      ) {
+        continue;
+      }
+
       const nodes = slideWindow.querySelectorAll<HTMLElement>(
         `[data-model-id="${elementId}"]`
       );
@@ -1079,9 +1170,6 @@ export function applySlideElementOverridesToDom(
       const accNode = document.getElementById(
         `acc-${elementId}`
       ) as HTMLElement | null;
-
-      const ov = overrides?.[elementId];
-      const isHidden = Boolean(ov?.hidden || hiddenIds.includes(elementId));
 
       if (accNode) {
         accNode.style.display = isHidden ? 'none' : '';
@@ -1101,6 +1189,28 @@ export function applySlideElementOverridesToDom(
         }
 
         if (ov) {
+          // Storyline scales .slide-layer and .slide-container to (1280 * winScale) x (720 * winScale).
+          // Measure the live scaled stage dimensions so widthPct, heightPct, xDeltaPct, yDeltaPct match 1:1 with the Admin Canvas!
+          const stageHost =
+            el.closest<HTMLElement>('.slide-layer') ||
+            el.closest<HTMLElement>('.slide-transition-container') ||
+            el.closest<HTMLElement>('.slide-container') ||
+            slideWindow.querySelector<HTMLElement>(
+              '.slide-layer, .slide-transition-container, .slide-container'
+            );
+          const stageW =
+            (stageHost && !stageHost.style.width.includes('%')
+              ? parseFloat(stageHost.style.width)
+              : 0) ||
+            stageHost?.offsetWidth ||
+            1280;
+          const stageH =
+            (stageHost && !stageHost.style.height.includes('%')
+              ? parseFloat(stageHost.style.height)
+              : 0) ||
+            stageHost?.offsetHeight ||
+            720;
+
           const baked =
             winShift.__STARLA_JSON_SHIFTED_ELEMENTS__?.[slide.id]?.[elementId];
           const netXDeltaPct = (ov.xDeltaPct || 0) - (baked?.xDeltaPct || 0);
@@ -1108,11 +1218,11 @@ export function applySlideElementOverridesToDom(
 
           el.style.marginLeft =
             Math.abs(netXDeltaPct) > 0.001
-              ? `${Math.round((netXDeltaPct / 100) * 1280)}px`
+              ? `${Math.round((netXDeltaPct / 100) * stageW)}px`
               : '';
           el.style.marginTop =
             Math.abs(netYDeltaPct) > 0.001
-              ? `${Math.round((netYDeltaPct / 100) * 720)}px`
+              ? `${Math.round((netYDeltaPct / 100) * stageH)}px`
               : '';
 
           if (!el.dataset.starlaOrigW) {
@@ -1152,13 +1262,13 @@ export function applySlideElementOverridesToDom(
             const targetW = Math.max(
               4,
               ov.widthPct !== undefined && ov.widthPct > 0
-                ? Math.round((ov.widthPct / 100) * 1280)
+                ? Math.round((ov.widthPct / 100) * stageW)
                 : Math.round(origW)
             );
             const targetH = Math.max(
               4,
               ov.heightPct !== undefined && ov.heightPct > 0
-                ? Math.round((ov.heightPct / 100) * 720)
+                ? Math.round((ov.heightPct / 100) * stageH)
                 : Math.round(origH)
             );
 
@@ -1166,9 +1276,11 @@ export function applySlideElementOverridesToDom(
             el.style.height = `${targetH}px`;
 
             // IMPORTANT: Always use explicit pixel dimensions (never '100%') on child divs and SVGs
-            // so Storyline's internal Canvg svgHit hit-testing never encounters percentage units on a detached canvas.
+            // and reset negative SVG drop-shadow filter offsets (left/top) to 0px so resized buttons align 1:1.
             const childDivs = el.querySelectorAll<HTMLElement>('div');
             childDivs.forEach((d) => {
+              d.style.left = '0px';
+              d.style.top = '0px';
               d.style.width = `${targetW}px`;
               d.style.height = `${targetH}px`;
             });
@@ -1193,7 +1305,7 @@ export function applySlideElementOverridesToDom(
             childImgs.forEach((img) => {
               img.style.width = `${targetW}px`;
               img.style.height = `${targetH}px`;
-              img.style.objectFit = 'contain';
+              img.style.objectFit = 'fill';
             });
           } else if (el.dataset.starlaOrigW && el.dataset.starlaOrigH) {
             const restoreW = Math.max(4, Math.round(origW));
@@ -1220,48 +1332,41 @@ export function applySlideElementOverridesToDom(
             legacyInjectedImg.remove();
           }
 
-          if (ov.customImage) {
+          if (hasEffectiveCustomImage && ov.customImage) {
             const normalizedCustomImg =
               ov.customImage.startsWith('http') ||
               ov.customImage.startsWith('data:') ||
               ov.customImage.startsWith('/')
                 ? ov.customImage
                 : `/${ov.customImage}`;
-            let replacedAny = false;
             const imgEl = el.querySelector<HTMLImageElement>('img');
             if (imgEl) {
               if (imgEl.getAttribute('src') !== normalizedCustomImg) {
                 imgEl.setAttribute('src', normalizedCustomImg);
               }
-              replacedAny = true;
+              imgEl.style.objectFit = 'fill';
             }
             const svgImgs = el.querySelectorAll('image');
             if (svgImgs.length > 0) {
               svgImgs.forEach((svgImg) => {
                 svgImg.setAttribute('href', normalizedCustomImg);
                 svgImg.setAttribute('xlink:href', normalizedCustomImg);
-              });
-              replacedAny = true;
-            }
-            // If native button was a pure SVG vector path with no <img>/<image>, render replacement image via CSS background on el
-            // while keeping the <svg> intact (opacity: 0) so Storyline's Canvg svgHit XML parser and hit bounds work 100% cleanly.
-            if (!replacedAny) {
-              el.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
-                svg.style.display = '';
-                svg.style.opacity = '0';
-              });
-              el.style.backgroundImage = `url("${normalizedCustomImg}")`;
-              el.style.backgroundSize = 'contain';
-              el.style.backgroundRepeat = 'no-repeat';
-              el.style.backgroundPosition = 'center';
-            } else {
-              el.style.backgroundImage = '';
-              el.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
-                svg.style.display = '';
-                svg.style.opacity = '';
+                svgImg.setAttribute('preserveAspectRatio', 'none');
               });
             }
+            // Render replacement image via CSS background on outer [data-model-id] box for 1:1 visual parity
+            // with ExactSlideStageCanvas while keeping inner <svg> opaque in innerHTML for Canvg svgHit.
+            el.setAttribute('data-starla-custom-bg', 'true');
+            el.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
+              svg.style.display = '';
+              svg.style.opacity = '';
+            });
+            el.style.backgroundImage = `url("${normalizedCustomImg}")`;
+            el.style.backgroundSize = '100% 100%';
+            el.style.backgroundRepeat = 'no-repeat';
+            el.style.backgroundPosition = 'center';
           } else {
+            el.removeAttribute('data-starla-custom-bg');
             el.style.backgroundImage = '';
             el.querySelectorAll<SVGSVGElement>('svg').forEach((svg) => {
               svg.style.display = '';
@@ -1278,7 +1383,9 @@ export function applySlideElementOverridesToDom(
 
           // Bind auto-hover effect, UI button SFX, and custom action trigger on native Storyline buttons/elements
           const hasCustomBehavior = Boolean(
-            (ov.actionType && ov.actionType !== 'default') ||
+            (ov.actionType &&
+              ov.actionType !== 'default' &&
+              !isNativeDefaultTarget) ||
               ov.clickSfxUrl ||
               ov.hoverSfxUrl ||
               ov.hoverEffect

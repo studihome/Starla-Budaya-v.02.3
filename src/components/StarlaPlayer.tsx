@@ -10,6 +10,7 @@ import { useContent } from '../context/ContentContext';
 import {
   transformStorylineProvideData,
   syncContentToLiveDom,
+  applySlideElementOverridesToDom,
   protectStarlaLocalStorage,
   loadLastActiveSlideState,
   saveLastActiveSlideState,
@@ -73,6 +74,93 @@ function releaseAudioElement(audio: HTMLAudioElement | null): void {
   }
 }
 
+function normalizePublicAssetUrl(url?: string | null): string {
+  if (!url) return '';
+  if (
+    url.startsWith('http://') ||
+    url.startsWith('https://') ||
+    url.startsWith('data:') ||
+    url.startsWith('blob:') ||
+    url.startsWith('/')
+  ) {
+    return url;
+  }
+  return `/${url}`;
+}
+
+function extractSlideIdToken(raw: unknown): string | undefined {
+  if (!raw || typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  const parts = trimmed.split('.');
+  for (const part of parts) {
+    if (SLIDE_EXACT_META[part]) return part;
+  }
+  const last = parts[parts.length - 1];
+  return last && last.length >= 6 ? last : undefined;
+}
+
+function detectActiveStorylineSlideId(win: StarlaWindow): string | undefined {
+  try {
+    const coreFn = win.StarlaCoreEngine?.getCurrentSlideId;
+    if (typeof coreFn === 'function') {
+      const idFromCore = extractSlideIdToken(coreFn());
+      if (idFromCore && SLIDE_EXACT_META[idFromCore]) return idFromCore;
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const wm = win.DS?.windowManager || win.DS?.appState?.windowManager;
+    const curSlide = wm?.getCurrentWindowSlide?.() || wm?.currentSlide;
+    if (curSlide) {
+      const rawId =
+        curSlide.id ||
+        (typeof curSlide.get === 'function' ? curSlide.get('id') : undefined) ||
+        curSlide.absoluteId ||
+        (typeof curSlide.get === 'function'
+          ? curSlide.get('absoluteId')
+          : undefined);
+      const parsed = extractSlideIdToken(rawId);
+      if (parsed && SLIDE_EXACT_META[parsed]) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const sw = document.getElementById('slide-window');
+    if (sw) {
+      const repNodes = sw.querySelectorAll<HTMLElement>(
+        '[data-represents^="_player."]'
+      );
+      for (let i = 0; i < repNodes.length; i++) {
+        const rep = repNodes[i].getAttribute('data-represents') || '';
+        // Format: _player.5sAEMI5psmg.<slideId>.<objectId>
+        const tokens = rep.split('.');
+        if (tokens.length >= 3 && SLIDE_EXACT_META[tokens[2]]) {
+          return tokens[2];
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const lastViewed = win
+      .GetPlayer?.()
+      ?.GetVar?.('LastSlideViewed_5jpgil4RGjK');
+    const parsed = extractSlideIdToken(lastViewed);
+    if (parsed && SLIDE_EXACT_META[parsed]) return parsed;
+  } catch {
+    // ignore
+  }
+
+  return undefined;
+}
+
 /**
  * Komponen Player Utama STARLA BUDAYA (Pillar 2 Optimized).
  * - Menyinkronkan `ContentContext` secara non-intrusif dengan engine Articulate Storyline.
@@ -88,8 +176,7 @@ export const StarlaPlayer: React.FC = React.memo(() => {
   latestContentRef.current = content;
 
   const [activePublicSlideId, setActivePublicSlideId] = useState<string>(() => {
-    const saved = loadLastActiveSlideState();
-    return saved?.slideId || content.slideOrder[0] || '6AR4SV4ZYat';
+    return content.slideOrder[0] || '6AR4SV4ZYat';
   });
   const activePublicSlideIdRef = useRef<string>(activePublicSlideId);
   activePublicSlideIdRef.current = activePublicSlideId;
@@ -107,6 +194,12 @@ export const StarlaPlayer: React.FC = React.memo(() => {
   const [slideWindowEl, setSlideWindowEl] = useState<HTMLElement | null>(null);
   const slideWindowElRef = useRef<HTMLElement | null>(null);
   slideWindowElRef.current = slideWindowEl;
+  const [stageBoxStyle, setStageBoxStyle] = useState<React.CSSProperties>({
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+  });
 
   const backsoundAudioRef = useRef<HTMLAudioElement | null>(null);
   const voiceOverAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -171,42 +264,68 @@ export const StarlaPlayer: React.FC = React.memo(() => {
     wrapGlobalProvideData();
   }, [contextApi, content]);
 
-  // Resume Last Active Slide on Browser Refresh / Reopen & Continuous Slide Tracker + Anti-Stuck Watchdog
+  // Measure and align the 16:9 stage overlay container with Storyline's live .slide-transition-container / .slide-container
+  const updateStageBoxAlignment = useCallback(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    const sw = document.getElementById('slide-window');
+    if (!sw) return;
+    if (window.getComputedStyle(sw).position === 'static') {
+      sw.style.position = 'relative';
+    }
+    const targetStage =
+      sw.querySelector<HTMLElement>('.slide-transition-container') ||
+      sw.querySelector<HTMLElement>('.slide-container') ||
+      sw.querySelector<HTMLElement>('.slide-layer');
+    const swRect = sw.getBoundingClientRect();
+    if (targetStage && swRect.width > 0 && swRect.height > 0) {
+      const stRect = targetStage.getBoundingClientRect();
+      if (stRect.width > 20 && stRect.height > 20) {
+        const left = Math.round(stRect.left - swRect.left);
+        const top = Math.round(stRect.top - swRect.top);
+        const width = Math.round(stRect.width);
+        const height = Math.round(stRect.height);
+        setStageBoxStyle((prev) => {
+          if (
+            prev.left === `${left}px` &&
+            prev.top === `${top}px` &&
+            prev.width === `${width}px` &&
+            prev.height === `${height}px`
+          ) {
+            return prev;
+          }
+          return {
+            position: 'absolute',
+            left: `${left}px`,
+            top: `${top}px`,
+            width: `${width}px`,
+            height: `${height}px`,
+          };
+        });
+        return;
+      }
+    }
+    setStageBoxStyle((prev) => {
+      if (prev.inset === 0) return prev;
+      return {
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    updateStageBoxAlignment();
+    window.addEventListener('resize', updateStageBoxAlignment);
+    return () => window.removeEventListener('resize', updateStageBoxAlignment);
+  }, [updateStageBoxAlignment, activePublicSlideId, slideWindowEl]);
+
+  // Continuous Slide Tracker + Anti-Stuck Watchdog
   // Stabilized with refs so the interval & event listeners mount once and never churn on slide transitions
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
     const win = window as unknown as StarlaWindow;
-
-    let restoredSession = false;
-    let restoreCompleted = false;
-    let restoreAttempts = 0;
-    const initialSaved = loadLastActiveSlideState();
-
-    const unlockFrontStageNow = () => {
-      const frontStage = document.getElementById('starla-front-stage');
-      if (frontStage) {
-        frontStage.style.opacity = '0';
-        frontStage.style.pointerEvents = 'none';
-        frontStage.style.display = 'none';
-        frontStage.classList.add(
-          'hidden-stage',
-          'is-hidden',
-          'is-Unlocked',
-          'is-Hidden'
-        );
-      }
-      if (document.body) {
-        document.body.classList.add('starla-started');
-      }
-      win.__starlaFrontOpened = true;
-    };
-
-    if (initialSaved && initialSaved.frontOpened && initialSaved.slideId) {
-      unlockFrontStageNow();
-      setActivePublicSlideId(initialSaved.slideId);
-    } else {
-      restoreCompleted = true;
-    }
 
     const onCustomSlideChanged = (ev: Event) => {
       const customEv = ev as CustomEvent<{
@@ -214,16 +333,18 @@ export const StarlaPlayer: React.FC = React.memo(() => {
         slideIndex: number;
       }>;
       if (customEv.detail?.slideId) {
-        restoreCompleted = true;
         setActivePublicSlideId(customEv.detail.slideId);
         setInline360OverlayUrl(null);
+        window.setTimeout(() => {
+          updateStageBoxAlignment();
+          syncContentToLiveDom(latestContentRef.current);
+        }, 60);
       }
     };
     window.addEventListener('starla:slide-changed', onCustomSlideChanged);
 
     const accessBtn = document.getElementById('starla-access-btn');
     const onAccessBtnClick = () => {
-      restoreCompleted = true;
       saveLastActiveSlideState({
         slideId: activePublicSlideIdRef.current || '6AR4SV4ZYat',
         frontOpened: true,
@@ -233,11 +354,16 @@ export const StarlaPlayer: React.FC = React.memo(() => {
 
     let stuckLoaderTicks = 0;
 
-    const intervalId = window.setInterval(() => {
+    const checkAndSyncStorylineSlide = () => {
       const sw = document.getElementById('slide-window');
       if (sw && sw !== slideWindowElRef.current) {
+        if (window.getComputedStyle(sw).position === 'static') {
+          sw.style.position = 'relative';
+        }
         slideWindowElRef.current = sw;
         setSlideWindowEl(sw);
+        updateStageBoxAlignment();
+        applySlideElementOverridesToDom(latestContentRef.current);
       }
 
       // Anti-stuck watchdog: prevent Storyline's .slide-loader from freezing a slide indefinitely
@@ -256,64 +382,9 @@ export const StarlaPlayer: React.FC = React.memo(() => {
         stuckLoaderTicks = 0;
       }
 
-      // Restore saved slide once Storyline's DS.windowManager & pubSub have mounted the initial slide
-      if (
-        !restoreCompleted &&
-        initialSaved &&
-        initialSaved.frontOpened &&
-        initialSaved.slideId
-      ) {
-        unlockFrontStageNow();
-
-        if (!SLIDE_EXACT_META[initialSaved.slideId]) {
-          restoredSession = true;
-          restoreCompleted = true;
-          setActivePublicSlideId(initialSaved.slideId);
-          return;
-        }
-
-        const currentStorylineSlide =
-          win.DS?.windowManager?.getCurrentWindowSlide?.();
-        const currentId: string | undefined = currentStorylineSlide?.id;
-
-        if (win.DS?.pubSub && currentId) {
-          try {
-            const player = win.GetPlayer?.();
-            if (player && typeof player.SetVar === 'function') {
-              if (initialSaved.studentName) {
-                player.SetVar('TextEntry4', initialSaved.studentName);
-              }
-              if (initialSaved.studentSchool) {
-                player.SetVar('TextEntry5', initialSaved.studentSchool);
-              }
-            }
-          } catch {
-            // ignore player variable restore errors
-          }
-
-          if (currentId === initialSaved.slideId) {
-            restoredSession = true;
-            restoreCompleted = true;
-            setActivePublicSlideId(initialSaved.slideId);
-          } else if (!restoredSession || restoreAttempts < 3) {
-            restoredSession = true;
-            restoreAttempts += 1;
-            navigateStorylineToSlide(
-              initialSaved.slideId,
-              latestContentRef.current
-            );
-            if (restoreAttempts >= 3) {
-              restoreCompleted = true;
-            }
-          }
-        }
-        return;
-      }
-
       // Track live Storyline slide changes when user clicks Next/Back/Menu inside Storyline
       try {
-        const curSlide = win.DS?.windowManager?.getCurrentWindowSlide?.();
-        const curId: string | undefined = curSlide?.id;
+        const curId = detectActiveStorylineSlideId(win);
         if (curId && typeof curId === 'string') {
           setActivePublicSlideId((prevId) => {
             if (
@@ -358,6 +429,10 @@ export const StarlaPlayer: React.FC = React.memo(() => {
                   detail: { slideId: curId, slideIndex: idx },
                 })
               );
+              window.setTimeout(() => {
+                updateStageBoxAlignment();
+                syncContentToLiveDom(latestContentRef.current);
+              }, 60);
             }
             return curId;
           });
@@ -365,14 +440,21 @@ export const StarlaPlayer: React.FC = React.memo(() => {
       } catch {
         // ignore
       }
-    }, 350);
+    };
+
+    const intervalId = window.setInterval(checkAndSyncStorylineSlide, 500);
+    const onGlobalPointerUp = () => {
+      window.setTimeout(checkAndSyncStorylineSlide, 120);
+    };
+    window.addEventListener('pointerup', onGlobalPointerUp, { passive: true });
 
     return () => {
       window.clearInterval(intervalId);
+      window.removeEventListener('pointerup', onGlobalPointerUp);
       window.removeEventListener('starla:slide-changed', onCustomSlideChanged);
       accessBtn?.removeEventListener('click', onAccessBtnClick);
     };
-  }, []);
+  }, [updateStageBoxAlignment]);
 
   const currentSlide = useMemo(
     () => content.slides[activePublicSlideId],
@@ -443,7 +525,7 @@ export const StarlaPlayer: React.FC = React.memo(() => {
           Math.min(1, currentSlide?.backsoundVolume ?? 0.45)
         );
         if (backsoundAudioRef.current.paused) {
-          void backsoundAudioRef.current.play().catch(() => {});
+          void bsAudioPlaySafe(backsoundAudioRef.current);
         }
       }
     } else if (backsoundAudioRef.current) {
@@ -481,6 +563,10 @@ export const StarlaPlayer: React.FC = React.memo(() => {
     currentSlide?.voiceOverVolume,
     currentSlide?.voiceOverAutoplay,
   ]);
+
+  function bsAudioPlaySafe(audioEl: HTMLAudioElement) {
+    return audioEl.play().catch(() => {});
+  }
 
   // Listen for custom triggers fired from native Storyline slide buttons
   useEffect(() => {
@@ -602,9 +688,9 @@ export const StarlaPlayer: React.FC = React.memo(() => {
         createPortal(
           <div
             data-starla-live-stage-layer="true"
+            data-starla-active-slide-id={activePublicSlideId}
             style={{
-              position: 'absolute',
-              inset: 0,
+              ...stageBoxStyle,
               pointerEvents: 'none',
               zIndex: 999,
             }}
@@ -625,17 +711,17 @@ export const StarlaPlayer: React.FC = React.memo(() => {
                 {(currentSlide.backgroundUrl ||
                   customRuntimeSlide?.backgroundUrl) && (
                   <img
-                    src={
+                    src={normalizePublicAssetUrl(
                       currentSlide.backgroundUrl ||
-                      customRuntimeSlide?.backgroundUrl ||
-                      ''
-                    }
+                        customRuntimeSlide?.backgroundUrl ||
+                        ''
+                    )}
                     alt={currentMeta.smartTitle}
                     onError={(e) => {
                       const img = e.currentTarget;
                       if (!img.dataset.fallbackApplied) {
                         img.dataset.fallbackApplied = 'true';
-                        img.src = 'mobile/Slide5znCNCeGBCx.jpg';
+                        img.src = '/mobile/Slide5znCNCeGBCx.jpg';
                       }
                     }}
                     style={{
@@ -668,8 +754,9 @@ export const StarlaPlayer: React.FC = React.memo(() => {
                       backOv?.widthPct ?? (95 / 1280) * 100;
                     const backHeightPct =
                       backOv?.heightPct ?? (68 / 720) * 100;
-                    const backImgSrc =
-                      backOv?.customImage || 'mobile/6UTk9YJ1Rv7.png';
+                    const backImgSrc = normalizePublicAssetUrl(
+                      backOv?.customImage || 'mobile/6UTk9YJ1Rv7.png'
+                    );
                     const resolved360EmbedUrl = normalizeSmartEmbedUrl(
                       currentSlide.webObjectUrl ||
                         currentMeta.webObjectUrl ||
@@ -764,13 +851,13 @@ export const StarlaPlayer: React.FC = React.memo(() => {
                                 const img = e.currentTarget;
                                 if (!img.dataset.fallbackApplied) {
                                   img.dataset.fallbackApplied = 'true';
-                                  img.src = 'mobile/5dCAlHC5W8Z.png';
+                                  img.src = '/mobile/5dCAlHC5W8Z.png';
                                 }
                               }}
                               style={{
                                 width: '100%',
                                 height: '100%',
-                                objectFit: 'contain',
+                                objectFit: 'fill',
                               }}
                             />
                           </button>
@@ -844,8 +931,12 @@ export const StarlaPlayer: React.FC = React.memo(() => {
                             }}
                           >
                             <video
-                              src={obj.videoUrl}
-                              poster={obj.posterUrl || undefined}
+                              src={normalizePublicAssetUrl(obj.videoUrl)}
+                              poster={
+                                obj.posterUrl
+                                  ? normalizePublicAssetUrl(obj.posterUrl)
+                                  : undefined
+                              }
                               controls
                               autoPlay
                               style={{
@@ -858,7 +949,9 @@ export const StarlaPlayer: React.FC = React.memo(() => {
                         );
                       }
 
-                      const resolvedImg = ov?.customImage || obj.imageUrl;
+                      const resolvedImg = normalizePublicAssetUrl(
+                        ov?.customImage || obj.imageUrl
+                      );
                       if (!resolvedImg) return null;
                       return (
                         <div
@@ -1042,7 +1135,7 @@ export const StarlaPlayer: React.FC = React.memo(() => {
                   }}
                 >
                   <img
-                    src="mobile/5dCAlHC5W8Z.png"
+                    src="/mobile/5dCAlHC5W8Z.png"
                     alt="Kembali"
                     style={{
                       width: '100%',
@@ -1057,11 +1150,13 @@ export const StarlaPlayer: React.FC = React.memo(() => {
             {/* 3. Custom Interactive Canvas Elements (100% Pure Image Buttons with Auto-Hover & UI Sound Effects) */}
             {customCanvasElements.map((el) => {
               const hasImage = Boolean(el.imageUrl);
+              const normalizedImgUrl = normalizePublicAssetUrl(el.imageUrl);
               const isHovered = hoveredCustomElId === el.id;
               const autoHoverEnabled = el.style?.hoverEffect !== 'none';
               return (
                 <div
                   key={el.id}
+                  data-starla-custom-button-id={el.id}
                   onMouseEnter={() => {
                     setHoveredCustomElId(el.id);
                     const hSfx = el.hoverSfxUrl ?? 'sfx:hover-soft';
@@ -1105,12 +1200,15 @@ export const StarlaPlayer: React.FC = React.memo(() => {
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
                     transform:
                       isHovered && autoHoverEnabled
-                        ? 'scale(1.07) translateY(-2px)'
+                        ? 'scale(1.05) translateY(-1px)'
                         : 'scale(1)',
-                    filter:
-                      isHovered && autoHoverEnabled
-                        ? 'brightness(1.08) drop-shadow(0 8px 16px rgba(37, 99, 235, 0.42))'
-                        : 'none',
+                    filter: hasImage
+                      ? isHovered && autoHoverEnabled
+                        ? 'brightness(1.06) drop-shadow(0 12px 18px rgba(0, 0, 0, 0.34))'
+                        : 'drop-shadow(0 10px 15px rgba(0, 0, 0, 0.26))'
+                      : isHovered && autoHoverEnabled
+                      ? 'brightness(1.08) drop-shadow(0 8px 16px rgba(37, 99, 235, 0.42))'
+                      : 'none',
                     transition:
                       'transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), filter 0.2s ease',
                     zIndex: el.zIndex || 30,
@@ -1118,20 +1216,20 @@ export const StarlaPlayer: React.FC = React.memo(() => {
                 >
                   {hasImage ? (
                     <img
-                      src={el.imageUrl}
+                      src={normalizedImgUrl}
                       alt={el.label || 'Tombol'}
                       draggable={false}
                       onError={(e) => {
                         const img = e.currentTarget;
                         if (!img.dataset.fallbackApplied) {
                           img.dataset.fallbackApplied = 'true';
-                          img.src = 'mobile/5dCAlHC5W8Z.png';
+                          img.src = '/mobile/5dCAlHC5W8Z.png';
                         }
                       }}
                       style={{
                         width: '100%',
                         height: '100%',
-                        objectFit: 'contain',
+                        objectFit: 'fill',
                         display: 'block',
                         userSelect: 'none',
                       }}

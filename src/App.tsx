@@ -36,7 +36,6 @@ export function MainPublicApp(): React.ReactElement {
   } = useContent();
 
   const lastSyncedSlideRef = useRef<number>(activeSlideIndex);
-  const lastAriaLabelRef = useRef<string>('');
 
   // 1. Sinkronisasi Arah 1: AdminDashboard (activeSlideIndex) -> ContentContext & Player
   useEffect(() => {
@@ -58,32 +57,18 @@ export function MainPublicApp(): React.ReactElement {
     setActiveCanvasSlideId,
   ]);
 
-  // 2. Sinkronisasi Arah 2: Navigasi Slide di Player Asli (#preso) -> AdminDashboard (useAdminData)
+  // 2. Sinkronisasi Arah 2: Navigasi Slide di Player Asli -> AdminDashboard (useAdminData) tanpa overhead MutationObserver subtree
   useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const presoEl = document.getElementById('preso');
-    if (!presoEl) return;
+    if (typeof window === 'undefined') return;
 
-    const initialLabelEl = document.querySelector('[aria-label^="slide:"]');
-    if (initialLabelEl) {
-      lastAriaLabelRef.current =
-        initialLabelEl.getAttribute('aria-label') || '';
-    }
-
-    const observer = new MutationObserver(() => {
-      const slideLabelEl = document.querySelector('[aria-label^="slide:"]');
-      const ariaVal = slideLabelEl?.getAttribute('aria-label');
-      if (!ariaVal || ariaVal === lastAriaLabelRef.current) return;
-      lastAriaLabelRef.current = ariaVal;
-
-      const cleanTitle = ariaVal.replace(/^slide:\s*/i, '').trim();
-      if (!cleanTitle) return;
-
-      const matchedIdx = content.slideOrder.findIndex((sid) => {
-        const s = content.slides[sid];
-        return s && s.title.trim().toLowerCase() === cleanTitle.toLowerCase();
-      });
-
+    const handleSlideSync = (ev: Event) => {
+      const customEv = ev as CustomEvent<{
+        slideId?: string;
+        slideIndex?: number;
+      }>;
+      const slideId = customEv.detail?.slideId;
+      if (!slideId) return;
+      const matchedIdx = content.slideOrder.indexOf(slideId);
       if (
         matchedIdx >= 0 &&
         matchedIdx < totalSlides &&
@@ -92,17 +77,15 @@ export function MainPublicApp(): React.ReactElement {
         lastSyncedSlideRef.current = matchedIdx;
         setActiveSlideIndex(matchedIdx);
       }
-    });
+    };
 
-    observer.observe(presoEl, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['aria-label'],
-    });
-
-    return () => observer.disconnect();
-  }, [content.slideOrder, content.slides, totalSlides, setActiveSlideIndex]);
+    window.addEventListener('starla:public-slide-synced', handleSlideSync);
+    window.addEventListener('starla:slide-changed', handleSlideSync);
+    return () => {
+      window.removeEventListener('starla:public-slide-synced', handleSlideSync);
+      window.removeEventListener('starla:slide-changed', handleSlideSync);
+    };
+  }, [content.slideOrder, totalSlides, setActiveSlideIndex]);
 
   return <StarlaPlayer />;
 }

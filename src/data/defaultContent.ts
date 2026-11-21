@@ -9031,7 +9031,7 @@ export const defaultContent: ContentSchema = {
           "objectId": "5Vj2vgTep1J",
           "assetId": 362,
           "url": "story_content/5b7bpGxEsZl.png",
-          "altText": "Desain tanpa judul (25).png",
+          "altText": "cari tahu.png",
           "width": 714,
           "height": 304
         },

@@ -322,6 +322,16 @@ export const STARLA_BUTTON_PRESETS: Array<{
     label: 'Ikon Pakaian Budaya',
     imageUrl: 'mobile/62oB2J2cBdW.png',
   },
+  {
+    id: 'btn-cari-tahu',
+    label: 'Tombol Kayu Cari Tahu',
+    imageUrl: 'mobile/cari_tahu.png',
+  },
+  {
+    id: 'btn-360-pameran',
+    label: 'Tombol Kayu 360° Pameran',
+    imageUrl: 'mobile/pameran.png',
+  },
 ];
 
 /**
@@ -1368,7 +1378,8 @@ export async function loadExactSlideStageData(
   // return an exact 1280x720 WebObject + authentic Slide 8 Back Button stage identical to Slide 8 (5jTlwgcUi8o)
   if (
     !SLIDE_EXACT_META[slideId] &&
-    !customSlide?.copiedFromSlideId &&
+    (!customSlide?.copiedFromSlideId ||
+      customSlide?.copiedFromSlideId === '5jTlwgcUi8o') &&
     (customSlide?.customCategory === 'tur360' ||
       Boolean(customSlide?.webObjectUrl) ||
       slideId.startsWith('tur360_'))
