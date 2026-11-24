@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { ContentProvider, useContent } from './context/ContentContext';
 import { StarlaPlayer } from './components/StarlaPlayer';
+import { PWAInstallNotice } from './components/PWAInstallNotice';
 import {
   AdminDashboard,
   useAdminData,
@@ -106,11 +107,12 @@ export default function App({
 }: AppProps = {}): React.ReactElement {
   return (
     <ContentProvider initialSupabaseContent={initialSupabaseContent}>
-      < React.Suspense fallback={null}>
+      <React.Suspense fallback={null}>
         <AdminDashboard>
           <MainPublicApp />
         </AdminDashboard>
       </React.Suspense>
+      <PWAInstallNotice />
     </ContentProvider>
   );
 }

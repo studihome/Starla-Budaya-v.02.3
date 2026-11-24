@@ -13,6 +13,9 @@ const STORY_HTML_PATH = path.join(__dirname, 'story.html');
 const HTML5_DIR_PATH = path.join(__dirname, 'html5');
 const MOBILE_DIR_PATH = path.join(__dirname, 'mobile');
 const STORY_CONTENT_DIR_PATH = path.join(__dirname, 'story_content');
+const ICONS_DIR_PATH = path.join(__dirname, 'icons');
+const MANIFEST_PATH = path.join(__dirname, 'manifest.webmanifest');
+const SW_PATH = path.join(__dirname, 'sw.js');
 
 let express = null;
 try {
@@ -38,6 +41,7 @@ const MIME_TYPES = {
   '.mjs': 'application/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -58,7 +62,20 @@ function applyStandardSecurityAndCacheHeaders(reqPath, res) {
   res.setHeader('Permissions-Policy', 'fullscreen=*, autoplay=*');
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
-  if (
+  if (reqPath === '/sw.js') {
+    res.setHeader('Service-Worker-Allowed', '/');
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate'
+    );
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  } else if (
+    reqPath === '/manifest.webmanifest' ||
+    reqPath === '/manifest.json'
+  ) {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  } else if (
     reqPath === '/' ||
     reqPath === '/admin' ||
     reqPath.startsWith('/admin/') ||
@@ -78,7 +95,8 @@ function applyStandardSecurityAndCacheHeaders(reqPath, res) {
   } else if (
     reqPath.startsWith('/story_content/') ||
     reqPath.startsWith('/html5/') ||
-    reqPath.startsWith('/mobile/')
+    reqPath.startsWith('/mobile/') ||
+    reqPath.startsWith('/icons/')
   ) {
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   }
@@ -293,6 +311,30 @@ function createNativeFallbackApp() {
         return;
       }
 
+      if (reqPath === '/manifest.webmanifest' || reqPath === '/manifest.json') {
+        if (fs.existsSync(MANIFEST_PATH)) {
+          const manifestBuf = fs.readFileSync(MANIFEST_PATH);
+          res.writeHead(200, {
+            'Content-Type': 'application/manifest+json; charset=utf-8',
+            'Content-Length': manifestBuf.length,
+          });
+          res.end(manifestBuf);
+          return;
+        }
+      }
+
+      if (reqPath === '/sw.js') {
+        if (fs.existsSync(SW_PATH)) {
+          const swBuf = fs.readFileSync(SW_PATH);
+          res.writeHead(200, {
+            'Content-Type': 'application/javascript; charset=utf-8',
+            'Content-Length': swBuf.length,
+          });
+          res.end(swBuf);
+          return;
+        }
+      }
+
       if (reqPath === '/story.html' || reqPath === '/story') {
         const target = fs.existsSync(STORY_HTML_PATH)
           ? STORY_HTML_PATH
@@ -419,6 +461,28 @@ function createExpressApp() {
     return res.status(404).send('// starla-content-bridge.js not found');
   });
 
+  app.get(['/manifest.webmanifest', '/manifest.json'], (_req, res) => {
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+    if (fs.existsSync(MANIFEST_PATH)) {
+      return res.status(200).send(fs.readFileSync(MANIFEST_PATH, 'utf8'));
+    }
+    return res.status(404).json({ error: 'Manifest not found' });
+  });
+
+  app.get('/sw.js', (_req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Service-Worker-Allowed', '/');
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate'
+    );
+    if (fs.existsSync(SW_PATH)) {
+      return res.status(200).send(fs.readFileSync(SW_PATH, 'utf8'));
+    }
+    return res.status(404).send('// sw.js not found');
+  });
+
+  app.use('/icons', express.static(ICONS_DIR_PATH));
   app.use('/html5', express.static(HTML5_DIR_PATH));
   app.use('/mobile', express.static(MOBILE_DIR_PATH));
   app.use('/story_content', express.static(STORY_CONTENT_DIR_PATH));

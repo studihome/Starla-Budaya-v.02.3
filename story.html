@@ -6,12 +6,15 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="STARLA">
   <meta name="theme-color" content="#060913">
   <title>STARLA BUDAYA</title>
   <meta name="description" content="STARLA BUDAYA merupakan multimedia pembelajaran interaktif bersertifikat HKI dan buku terbit ber-ISBN yang menyajikan eksplorasi budaya dan nilai Pancasila melalui eksplorasi imersif 360° dan gamifikasi.">
   <meta property="og:title" content="STARLA BUDAYA">
   <meta property="og:description" content="STARLA BUDAYA merupakan multimedia pembelajaran interaktif bersertifikat HKI dan buku terbit ber-ISBN yang menyajikan eksplorasi budaya dan nilai Pancasila melalui eksplorasi imersif 360° dan gamifikasi.">
   <link rel="canonical" href="https://faryzt.github.io/starla-360/">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
@@ -84,7 +87,11 @@
       margin: 0;
       padding: 0;
       width: 100%;
+      width: 100vw;
       height: 100%;
+      height: 100dvh;
+      max-width: 100vw;
+      max-height: 100dvh;
       overflow: hidden;
       background: #060913;
       touch-action: manipulation;
@@ -349,6 +356,7 @@
       border-radius: 0 !important;
       background: transparent !important;
       position: absolute !important;
+      isolation: isolate;
     }
 
     /* Layer & objek tersembunyi wajib nonaktif total */
@@ -371,15 +379,17 @@
       pointer-events: none !important;
     }
 
-    /* Backdrop gelap state / Rectangle 1: z-index: 2 !important; pointer-events: none !important; */
+    /* Backdrop gelap state / Rectangle 1: z-index: 0 !important; pointer-events: none !important; (di belakang seluruh tombol layer) */
+    .slide-layer:not(.base-layer).shown::before,
     .starla-state-backdrop,
     .starla-layer-backdrop,
     .layer-modal-bg {
+      content: "";
       position: fixed !important;
       inset: 0 !important;
       width: 100% !important;
       height: 100% !important;
-      z-index: 2 !important;
+      z-index: 0 !important;
       border-radius: 0 !important;
       pointer-events: none !important;
       background: rgba(5, 8, 17, 0.78) !important;
@@ -394,12 +404,41 @@
     [data-model-id="692ysfOgrrl"],
     [data-model-id="67wByfUR3M4"],
     [data-model-id="5Zdim6oDgtl"],
+    [data-model-id="6MKPq3TZY2M"],
+    [data-model-id="5zwu2R5fzL8"],
     [data-acc-text="Rectangle 1"] {
-      z-index: 2 !important;
+      z-index: 1 !important;
       pointer-events: none !important;
     }
 
-    /* Objek gambar modal & state valid (Hukum 3 & Hukum 4: z-index: 25 !important) */
+    /* Aset dekoratif non-interaktif pada layer umpan balik Kuis (Slide 25-34), Slide 6, Slide 40 (Anak Garuda), dan Slide 43: wajib tembus klik/drag */
+    [data-model-id="5s5fyaUq5F5"],
+    [data-model-id="5mLhj75cZ4L"] {
+      z-index: 5 !important;
+      pointer-events: none !important;
+    }
+
+    [data-model-id="6n4v1TVPYkj"],
+    [data-model-id="5cdGs3Yklaw"],
+    [data-model-id="6iBj0j4Wyvj"],
+    [data-model-id="6ExPND8186F"] {
+      z-index: 15 !important;
+      pointer-events: none !important;
+    }
+
+    [data-model-id="647GXvbCxZp"],
+    [data-model-id="61zEAUw7Yj0"],
+    [data-model-id="6f8xGdqBHkx"],
+    [data-model-id="5Ur9Ty2CRVt"],
+    [data-model-id="5Uu6byOFyRq"],
+    [data-model-id="6hHZP19HnwQ"],
+    [data-model-id="5uTSYMgk1yg"],
+    [data-model-id="68Xszod2oOA"],
+    [data-model-id="62w4aJlEG6u"] {
+      pointer-events: none !important;
+    }
+
+    /* Objek gambar modal & state valid (Hukum 3 & Hukum 4: z-index: 25 !important, pointer-events: none) */
     [data-model-id="6eb4PmDsps1"],
     [data-model-id="6NmAh1Gt8vY"],
     [data-model-id="6exxdHWPhvw"],
@@ -407,6 +446,8 @@
     [data-model-id="6q4ZApIYDaj"],
     [data-model-id="6QlVJiPwrWl"],
     [data-model-id="5vAd6TsQE7K"],
+    [data-model-id="5eCesPD9p2h"],
+    [data-model-id="5VvHnWLINWK"],
     img[src*="6EfvCxuLoY5"],
     img[src*="5ZAJjyZwSHr"],
     img[src*="6qmYZKenWib"],
@@ -427,45 +468,57 @@
     #acc-6NmAh1Gt8vY { top: 31.5px !important; }
     #acc-5Zr3famKnLd { top: 29.5px !important; }
 
-    /* Seluruh tombol interaktif, tombol close (5ZMtYjS7oxd, 5tBmZlAoMEi, 5Zr3famKnLd, 5cduCNQqTlN), dan input teks: z-index: 30 !important */
-    .slide-object.use-hand:not(.slide-object-video),
-    .slide-object button:not(.starla-transparent-play-btn),
-    [data-model-id="60Y2D5T2PBN"],
-    [data-model-id="5hjfDHsqC4N"],
-    [data-model-id="5xuxdAf2iyO"],
-    [data-model-id="6UhHiuuKuan"],
-    [data-model-id="6gZ3i9V6xyz"],
-    [data-model-id="5VY7baERHMi"],
-    [data-model-id="5kREu1RQMZp"],
-    [data-model-id="5ikAyrCHttT"],
-    [data-model-id="5cPSgbCeIlr"],
-    [data-model-id="5ZPukeMFffY"],
-    [data-model-id="5Vj2vgTep1J"],
-    [data-model-id="6afmjIda5Z2"],
-    [data-model-id="5VPCvIjv1Te"],
-    [data-model-id="5goKs081cYq"],
-    [data-model-id="6n4v1TVPYkj"],
-    [data-model-id="6iBj0j4Wyvj"],
-    [data-model-id="6VpxF5tzDfS"],
+    /* Seluruh tombol interaktif utama, tombol close, tombol Lanjut/Selesai (Slide 6, 25-35, 40, 43): z-index: 35 !important tanpa menimpa depth drag-and-drop native */
+    .slide-object:not(.hidden) button:not(.starla-transparent-play-btn),
+    [data-model-id="60Y2D5T2PBN"]:not(.hidden),
+    [data-model-id="5hjfDHsqC4N"]:not(.hidden),
+    [data-model-id="5xuxdAf2iyO"]:not(.hidden),
+    [data-model-id="6UhHiuuKuan"]:not(.hidden),
+    [data-model-id="6gZ3i9V6xyz"]:not(.hidden),
+    [data-model-id="5VY7baERHMi"]:not(.hidden),
+    [data-model-id="5kREu1RQMZp"]:not(.hidden),
+    [data-model-id="5ikAyrCHttT"]:not(.hidden),
+    [data-model-id="5cPSgbCeIlr"]:not(.hidden),
+    [data-model-id="5ZPukeMFffY"]:not(.hidden),
+    [data-model-id="5Vj2vgTep1J"]:not(.hidden),
+    [data-model-id="6afmjIda5Z2"]:not(.hidden),
+    [data-model-id="btn_pameran_360_budaya"]:not(.hidden),
+    [data-model-id="5VPCvIjv1Te"]:not(.hidden),
+    [data-model-id="5goKs081cYq"]:not(.hidden),
+    [data-model-id="6g9PyClc9Ga"]:not(.hidden),
+    [data-model-id="6PGiQBN0VYp"]:not(.hidden),
+    [data-model-id="6VpxF5tzDfS"]:not(.hidden),
     img[src*="6VpxF5tzDfS"],
-    [data-model-id="5Zr3famKnLd"],
-    [data-model-id="5ZMtYjS7oxd"],
-    [data-model-id="5tBmZlAoMEi"],
-    [data-model-id="67BmTMfY8zv"],
-    [data-model-id="5vw6iEJUiYN"],
-    [data-acc-text*="7409592"],
+    [data-model-id="5Zr3famKnLd"]:not(.hidden),
+    [data-model-id="5ZMtYjS7oxd"]:not(.hidden),
+    [data-model-id="5tBmZlAoMEi"]:not(.hidden),
+    [data-model-id="67BmTMfY8zv"]:not(.hidden),
+    [data-model-id="6UTaTWhJ8Dx"]:not(.hidden),
+    [data-model-id="5vw6iEJUiYN"]:not(.hidden),
+    [data-model-id="5bho98CMin1"]:not(.hidden),
+    [data-model-id="665ZbJN207i"]:not(.hidden),
+    [data-acc-text*="7409592"]:not(.hidden),
     img[src*="6ljF2bhskoS"],
-    [data-model-id="5Z3CAwZT8J0"],
-    [data-model-id="60OqR1FSbfo"],
-    [data-model-id="6niCawvLG1a"],
-    [data-model-id="5dFWkaH35V0"],
-    [data-acc-text*="lanjut" i],
-    [data-acc-text*="close" i],
-    [data-acc-text*="tutup" i],
-    [data-acc-text*="silang" i] {
-      z-index: 30 !important;
+    [data-model-id="5Z3CAwZT8J0"]:not(.hidden),
+    [data-model-id="60OqR1FSbfo"]:not(.hidden),
+    [data-model-id="6niCawvLG1a"]:not(.hidden),
+    [data-model-id="5dFWkaH35V0"]:not(.hidden),
+    [data-acc-text*="lanjut" i]:not(.hidden),
+    [data-acc-text*="selesai" i]:not(.hidden),
+    [data-acc-text*="close" i]:not(.hidden),
+    [data-acc-text*="tutup" i]:not(.hidden),
+    [data-acc-text*="silang" i]:not(.hidden) {
+      z-index: 35 !important;
       pointer-events: auto !important;
       cursor: pointer !important;
+    }
+
+    /* Pastikan objek di dalam layer tersembunyi tetap nonaktif meskipun cocok dengan selektor tombol di atas */
+    .slide-layer.hidden [data-model-id],
+    .slide-layer.hidden [data-acc-text],
+    .slide-object.hidden {
+      display: none !important;
+      pointer-events: none !important;
     }
 
     /* Slide 6IgV5Xf2ecV: Video Container & Marker Tutup (5cduCNQqTlN) */
@@ -562,6 +615,115 @@
       border: 2px solid rgba(231, 76, 60, 0.8) !important;
       border-radius: 0 !important;
     }
+
+    /* 6. Mobile Vertical / Minimized Blank Black Screen & Rotate Landscape Notice (All Pages) */
+    #starla-mobile-rotate-guard {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100dvh;
+      min-height: 100vh;
+      z-index: 2147483647;
+      background: #000000 !important;
+      color: #ffffff;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      padding: 28px 24px;
+      box-sizing: border-box;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #starla-mobile-rotate-guard.is-visible {
+      display: flex !important;
+      pointer-events: auto !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+
+    @media screen and (max-width: 920px) and (orientation: portrait) and (pointer: coarse),
+           screen and (max-width: 768px) and (orientation: portrait) {
+      #starla-mobile-rotate-guard:not(.force-hidden) {
+        display: flex !important;
+        pointer-events: auto !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+      }
+    }
+
+    .starla-rotate-icon-wrap {
+      width: 96px;
+      height: 96px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .starla-rotate-phone-svg {
+      width: 88px;
+      height: 88px;
+      overflow: visible;
+    }
+
+    .starla-rotate-device-group {
+      transform-origin: 60px 60px;
+      animation: starlaRotatePhone 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+
+    .starla-rotate-arc {
+      opacity: 0.92;
+      animation: starlaRotateArcPulse 2.4s ease-in-out infinite;
+    }
+
+    @keyframes starlaRotatePhone {
+      0%, 18% {
+        transform: rotate(0deg);
+      }
+      45%, 72% {
+        transform: rotate(-90deg);
+      }
+      92%, 100% {
+        transform: rotate(0deg);
+      }
+    }
+
+    @keyframes starlaRotateArcPulse {
+      0%, 100% {
+        opacity: 0.45;
+      }
+      50% {
+        opacity: 1;
+      }
+    }
+
+    .starla-rotate-title {
+      font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      color: #ffffff;
+      margin: 0;
+      line-height: 1.35;
+    }
+
+    .starla-rotate-desc {
+      font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      color: #94a3b8;
+      max-width: 290px;
+      margin: 0;
+      line-height: 1.5;
+    }
   </style>
 
   <!-- ========================================================================= -->
@@ -580,11 +742,17 @@
             if (window.localStorage) {
               var savedContent = window.localStorage.getItem('starla_budaya_content_backup_v1');
               var savedMedia = window.localStorage.getItem('starla_budaya_media_backup_v1');
+              var savedAdminExtra = window.localStorage.getItem('starla_admin_extra_v2');
+              var savedPwaInstalled = window.localStorage.getItem('starla_pwa_installed_v1');
               window.localStorage.clear();
               if (savedContent) window.localStorage.setItem('starla_budaya_content_backup_v1', savedContent);
               if (savedMedia) window.localStorage.setItem('starla_budaya_media_backup_v1', savedMedia);
+              if (savedAdminExtra) window.localStorage.setItem('starla_admin_extra_v2', savedAdminExtra);
+              if (savedPwaInstalled) window.localStorage.setItem('starla_pwa_installed_v1', savedPwaInstalled);
             }
-            if (window.sessionStorage) window.sessionStorage.clear();
+            if (window.sessionStorage) {
+              window.sessionStorage.clear();
+            }
           }
         } catch (e) {}
       }
@@ -598,12 +766,39 @@
         }
       });
 
-      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+      // Hybrid PWA: Capture early install prompt & register offline Service Worker safely (top-level & embed-compatible)
+      window.__STARLA_DEFERRED_INSTALL_PROMPT__ = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
         try {
-          navigator.serviceWorker.getRegistrations().then(function(regs) {
-            regs.forEach(function(r) { try { r.unregister(); } catch (err) {} });
-          }).catch(function() {});
-        } catch (e) {}
+          e.preventDefault();
+          window.__STARLA_DEFERRED_INSTALL_PROMPT__ = e;
+        } catch (err) {}
+      });
+      window.addEventListener('appinstalled', function() {
+        try {
+          window.__STARLA_DEFERRED_INSTALL_PROMPT__ = null;
+          if (window.localStorage) {
+            window.localStorage.setItem('starla_pwa_installed_v1', '1');
+          }
+        } catch (err) {}
+      });
+
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && typeof navigator.serviceWorker.register === 'function') {
+        var registerStarlaSw = function() {
+          try {
+            var isSecure =
+              window.location.protocol === 'https:' ||
+              window.location.hostname === 'localhost' ||
+              window.location.hostname === '127.0.0.1';
+            if (!isSecure) return;
+            navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function() {});
+          } catch (e) {}
+        };
+        if (document.readyState === 'complete') {
+          registerStarlaSw();
+        } else {
+          window.addEventListener('load', registerStarlaSw, { once: true });
+        }
       }
 
       var origFetch = window.fetch;
@@ -1525,8 +1720,19 @@
 
       var stageHandled = false;
       function handleFrontStageTap(evt) {
-        if (stageHandled) return;
+        // Jika touchend sudah memproses akses namun browser baru mengizinkan fullscreen pada click berikutnya, perluas layar segera
+        if (stageHandled) {
+          if (evt && evt.isTrusted && !getFullscreenElement() && typeof requestUniversalFullscreenExpand === 'function') {
+            requestUniversalFullscreenExpand({ trigger: 'fingerprint-access', armFallbackOnReject: true });
+          }
+          return;
+        }
         stageHandled = true;
+
+        // Panggil requestFullscreen SECARA SINKRON di awal user gesture agar diizinkan 100% di semua perangkat (Desktop, Tablet, Ponsel)
+        if (evt && evt.isTrusted && typeof requestUniversalFullscreenExpand === 'function') {
+          requestUniversalFullscreenExpand({ trigger: 'fingerprint-access', armFallbackOnReject: true });
+        }
 
         try {
           var AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -1571,24 +1777,6 @@
           }
         }, 80);
 
-        if (evt && evt.isTrusted) {
-          try {
-            var docEl = document.documentElement;
-            var reqFs = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen || docEl.msRequestFullscreen;
-            if (reqFs) {
-              var pFs = reqFs.call(docEl);
-              if (pFs && typeof pFs.catch === 'function') pFs.catch(function() {});
-            }
-          } catch (e) {}
-
-          try {
-            if (screen.orientation && typeof screen.orientation.lock === 'function') {
-              var pOri = screen.orientation.lock('landscape');
-              if (pOri && typeof pOri.catch === 'function') pOri.catch(function() {});
-            }
-          } catch (e) {}
-        }
-
         var stage = document.getElementById('starla-front-stage');
         if (stage) {
           stage.style.opacity = '0';
@@ -1603,6 +1791,9 @@
           document.body.classList.add('starla-started');
         }
         window.__starlaFrontOpened = true;
+        if (typeof triggerViewportAutoScaleFit === 'function') {
+          triggerViewportAutoScaleFit();
+        }
 
         // Pastikan setelah ACCESS ditekan, video di slide selanjutnya (Intro) langsung berputar otomatis dengan suara
         var introStartTime = Date.now();
@@ -1692,28 +1883,9 @@
         var slideWindow = document.getElementById('slide-window');
         if (!slideWindow) return;
 
-        var layers = slideWindow.querySelectorAll('.slide-layer:not(.base-layer)');
-        for (var i = 0; i < layers.length; i++) {
-          var layer = layers[i];
-
-          // 1. Pastikan <svg> latar belakang layer berada di anak pertama .slide-layer
-          var svg = layer.querySelector(':scope > svg');
-          if (svg && layer.firstChild !== svg) {
-            layer.insertBefore(svg, layer.firstChild);
-          }
-
-          // 2. Pastikan backdrop state berada tepat setelah <svg>
-          var bd = layer.querySelector('.starla-state-backdrop');
-          if (!bd) {
-            bd = document.createElement('div');
-            bd.className = 'starla-state-backdrop';
-            if (svg && svg.nextSibling) {
-              layer.insertBefore(bd, svg.nextSibling);
-            } else {
-              layer.insertBefore(bd, layer.firstChild);
-            }
-          }
-        }
+        // Jangan memutasi atau menyisipkan node DOM baru ke dalam .slide-layer milik React 0.14 Storyline
+        // agar findComponentRoot (slides.min.js) tidak pernah mengalami Invariant Violation.
+        // Backdrop layer ditangani secara non-destruktif melalui CSS .slide-layer:not(.base-layer).shown::before.
 
         // Audit gambar rusak/404 tanpa menyentuh aset valid
         auditBrokenImagesInContainer(slideWindow);
@@ -1874,9 +2046,552 @@
         }, true);
       });
 
+      // -----------------------------------------------------------------------
+      // 6. AUTO-ROTATE, MOBILE PORTRAIT GUARD & AUTO-SCALE FIT LAYAR ENGINE
+      // -----------------------------------------------------------------------
+      var MOBILE_UA_RE = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Silk/i;
+      var mobileGuardState = {
+        wasInFullscreen: false,
+        lastReason: 'desktop',
+        pendingGestureFullscreen: false,
+        rafScheduled: false,
+        scaleTimers: [],
+        lastFitWidth: 0,
+        lastFitHeight: 0,
+        lastOrientation: '',
+        desktopUserExitedFullscreen: false,
+        fullscreenInFlight: false
+      };
+
+      function isAdminRoutePath() {
+        try {
+          var p = window.location.pathname || '';
+          var s = window.location.search || '';
+          return p.indexOf('/admin') === 0 || s.indexOf('mode=admin') !== -1;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      function getFullscreenElement() {
+        return (
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.mozFullScreenElement ||
+          document.msFullscreenElement ||
+          null
+        );
+      }
+
+      function isFullscreenApiSupported() {
+        var docEl = document.documentElement;
+        return Boolean(
+          docEl &&
+            (docEl.requestFullscreen ||
+              docEl.webkitRequestFullscreen ||
+              docEl.mozRequestFullScreen ||
+              docEl.msRequestFullscreen)
+        );
+      }
+
+      function isTextInputFocused() {
+        try {
+          var active = document.activeElement;
+          if (!active) return false;
+          var tag = (active.tagName || '').toUpperCase();
+          return tag === 'INPUT' || tag === 'TEXTAREA' || Boolean(active.isContentEditable);
+        } catch (e) {
+          return false;
+        }
+      }
+
+      function getEffectiveViewportSize() {
+        var iw = Math.max(0, window.innerWidth || document.documentElement.clientWidth || 0);
+        var ih = Math.max(0, window.innerHeight || document.documentElement.clientHeight || 0);
+        var vv = window.visualViewport;
+        var vvw = vv && vv.width > 0 ? vv.width : 0;
+        var vvh = vv && vv.height > 0 ? vv.height : 0;
+        var w = vvw > 0 ? Math.min(iw || vvw, vvw) : iw;
+        var h = vvh > 0 ? Math.min(ih || vvh, vvh) : ih;
+        return { width: Math.round(w), height: Math.round(h) };
+      }
+
+      function dispatchStorylineScaleReflow() {
+        try {
+          var vp = getEffectiveViewportSize();
+          if (vp.width > 0 && vp.height > 0 && document.documentElement) {
+            document.documentElement.style.setProperty('--starla-vw', vp.width + 'px');
+            document.documentElement.style.setProperty('--starla-vh', vp.height + 'px');
+          }
+          if (!isTextInputFocused()) {
+            try { window.scrollTo(0, 0); } catch (scrollErr) {}
+          }
+          window.dispatchEvent(new Event('resize'));
+          if (window.DS && window.DS.pubSub && typeof window.DS.pubSub.trigger === 'function') {
+            window.DS.pubSub.trigger('window:resize');
+          }
+        } catch (e) {}
+      }
+
+      function verifyAndRecoverStageFit() {
+        try {
+          var sw = document.getElementById('slide-window');
+          if (!sw) return;
+          var sc =
+            sw.querySelector('.slide-transition-container') ||
+            sw.querySelector('.slide-container') ||
+            sw;
+          var rect = sc.getBoundingClientRect();
+          var vp = getEffectiveViewportSize();
+          if (vp.width <= 0 || vp.height <= 0) return;
+
+          var expectedScale = Math.min(vp.width / 1280, vp.height / 720);
+          var expectedW = 1280 * expectedScale;
+          var expectedH = 720 * expectedScale;
+          var isClipped =
+            rect.left < -8 ||
+            rect.top < -8 ||
+            rect.right > vp.width + 8 ||
+            rect.bottom > vp.height + 8;
+          var isUndersized =
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.width < expectedW * 0.78 &&
+            rect.height < expectedH * 0.78;
+
+          if (isClipped || isUndersized) {
+            dispatchStorylineScaleReflow();
+          }
+        } catch (e) {}
+      }
+
+      function triggerViewportAutoScaleFit() {
+        try {
+          for (var i = 0; i < mobileGuardState.scaleTimers.length; i++) {
+            clearTimeout(mobileGuardState.scaleTimers[i]);
+          }
+          mobileGuardState.scaleTimers = [];
+
+          var vp = getEffectiveViewportSize();
+          mobileGuardState.lastFitWidth = vp.width;
+          mobileGuardState.lastFitHeight = vp.height;
+
+          requestAnimationFrame(dispatchStorylineScaleReflow);
+          mobileGuardState.scaleTimers.push(setTimeout(dispatchStorylineScaleReflow, 100));
+          mobileGuardState.scaleTimers.push(setTimeout(dispatchStorylineScaleReflow, 260));
+          mobileGuardState.scaleTimers.push(setTimeout(verifyAndRecoverStageFit, 480));
+        } catch (e) {}
+      }
+
+      function evaluateMobileGuard() {
+        var vp = getEffectiveViewportSize();
+        var w = vp.width;
+        var h = vp.height;
+        var ua = (navigator && navigator.userAgent) || '';
+        var maxTouch = (navigator && typeof navigator.maxTouchPoints === 'number') ? navigator.maxTouchPoints : 0;
+        var hasCoarse = false;
+        try {
+          hasCoarse = Boolean(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+        } catch (e) {}
+        var isMobileFlag = Boolean(window.isMobile && window.isMobile.any);
+        var shortestSide = Math.min(w, h);
+        var isMobileDevice =
+          isMobileFlag ||
+          MOBILE_UA_RE.test(ua) ||
+          ((hasCoarse || maxTouch > 0) && shortestSide > 0 && shortestSide <= 920) ||
+          (w > 0 && h > w && w <= 768);
+
+        if (!isMobileDevice) {
+          return {
+            isMobileDevice: false,
+            isPortrait: false,
+            isMinimized: false,
+            shouldShowBlackRotateNotice: false,
+            shouldRequestFullscreen: false,
+            reason: 'desktop'
+          };
+        }
+
+        var orientType = '';
+        try {
+          orientType = (window.screen && window.screen.orientation && window.screen.orientation.type) || '';
+        } catch (e) {}
+
+        var isPortrait = h > w || (h === w && orientType.toLowerCase().indexOf('portrait') === 0);
+        var isTyping = isTextInputFocused();
+        var scrH = (window.screen && window.screen.height) || 0;
+        var isSplitOrCompact =
+          !isTyping &&
+          w > h &&
+          ((scrH > 0 && h < Math.min(190, scrH * 0.36)) || (w < 380 && h < 200));
+        var isMinimized = Boolean(document.hidden) || isSplitOrCompact;
+        var isFullscreen = Boolean(getFullscreenElement());
+        var fsSupported = isFullscreenApiSupported();
+        var returningFromPortrait = mobileGuardState.lastReason === 'portrait' && !isPortrait;
+        if (returningFromPortrait) {
+          mobileGuardState.wasInFullscreen = false;
+        }
+        var exitedFullscreen =
+          !isTyping &&
+          mobileGuardState.wasInFullscreen &&
+          !returningFromPortrait &&
+          fsSupported &&
+          !isFullscreen;
+
+        if (isPortrait) {
+          return {
+            isMobileDevice: true,
+            isPortrait: true,
+            isMinimized: isMinimized,
+            shouldShowBlackRotateNotice: true,
+            shouldRequestFullscreen: false,
+            reason: 'portrait'
+          };
+        }
+        if (isMinimized) {
+          return {
+            isMobileDevice: true,
+            isPortrait: false,
+            isMinimized: true,
+            shouldShowBlackRotateNotice: true,
+            shouldRequestFullscreen: false,
+            reason: 'minimized'
+          };
+        }
+        if (exitedFullscreen) {
+          return {
+            isMobileDevice: true,
+            isPortrait: false,
+            isMinimized: true,
+            shouldShowBlackRotateNotice: true,
+            shouldRequestFullscreen: true,
+            reason: 'exited-fullscreen'
+          };
+        }
+
+        return {
+          isMobileDevice: true,
+          isPortrait: false,
+          isMinimized: false,
+          shouldShowBlackRotateNotice: false,
+          shouldRequestFullscreen: !isFullscreen && !isTyping,
+          reason: 'landscape-ready'
+        };
+      }
+
+      function isFrontStageActive() {
+        try {
+          var st = document.getElementById('starla-front-stage');
+          return Boolean(st && !st.classList.contains('hidden-stage') && st.style.display !== 'none');
+        } catch (e) {
+          return false;
+        }
+      }
+
+      function armNextTapLandscapeFullscreen() {
+        if (mobileGuardState.pendingGestureFullscreen || isAdminRoutePath() || isFrontStageActive()) return;
+        mobileGuardState.pendingGestureFullscreen = true;
+        var onGesture = function(ev) {
+          if (ev && ev.isTrusted === false) return;
+          mobileGuardState.pendingGestureFullscreen = false;
+          ['pointerdown', 'touchend', 'click'].forEach(function(evt) {
+            document.removeEventListener(evt, onGesture, true);
+          });
+          if (isAdminRoutePath() || isTextInputFocused() || getFullscreenElement() || mobileGuardState.fullscreenInFlight) return;
+          var evalNow = evaluateMobileGuard();
+          var vp = getEffectiveViewportSize();
+          var isLandscapeNow = vp.width > vp.height;
+          if (!isLandscapeNow) return;
+          if (!evalNow.isMobileDevice && mobileGuardState.desktopUserExitedFullscreen) return;
+          if (!evalNow.isPortrait && !evalNow.isMinimized) {
+            requestUniversalFullscreenExpand({ trigger: 'gesture-bridge', armFallbackOnReject: false });
+          }
+        };
+        ['pointerdown', 'touchend', 'click'].forEach(function(evt) {
+          document.addEventListener(evt, onGesture, { capture: true, passive: true });
+        });
+      }
+
+      function requestUniversalFullscreenExpand(options) {
+        var opts = options || {};
+        var trigger = opts.trigger || 'landscape-enter';
+        var armFallbackOnReject = opts.armFallbackOnReject !== false;
+        if (isAdminRoutePath() || isTextInputFocused()) return;
+        if (mobileGuardState.fullscreenInFlight) return;
+
+        var evalNow = evaluateMobileGuard();
+        var vp = getEffectiveViewportSize();
+        var isLandscape = vp.width > vp.height;
+
+        if (trigger !== 'fingerprint-access') {
+          if (!isLandscape) return;
+          if (!evalNow.isMobileDevice && mobileGuardState.desktopUserExitedFullscreen) return;
+        } else {
+          // Saat user menekan sidik jari/ACCESS secara eksplisit, reset flag exit desktop agar langsung perluas layar
+          mobileGuardState.desktopUserExitedFullscreen = false;
+        }
+
+        if (evalNow.isMobileDevice && !isTextInputFocused()) {
+          try { window.scrollTo(0, 1); } catch (e) {}
+        }
+
+        var finishAfterFullscreen = function() {
+          if (evalNow.isMobileDevice) {
+            try {
+              if (screen.orientation && typeof screen.orientation.lock === 'function') {
+                var pLock = screen.orientation.lock('landscape');
+                if (pLock && typeof pLock.catch === 'function') pLock.catch(function() {});
+              }
+            } catch (lockErr) {}
+          }
+          triggerViewportAutoScaleFit();
+        };
+
+        var docEl = document.documentElement;
+        var reqFs =
+          docEl &&
+          (docEl.requestFullscreen ||
+            docEl.webkitRequestFullscreen ||
+            docEl.mozRequestFullScreen ||
+            docEl.msRequestFullscreen);
+
+        if (reqFs && !getFullscreenElement()) {
+          mobileGuardState.fullscreenInFlight = true;
+          var releaseFlightTimer = setTimeout(function() {
+            mobileGuardState.fullscreenInFlight = false;
+          }, 600);
+          try {
+            var pFs;
+            try {
+              pFs = reqFs.call(docEl, { navigationUI: 'hide' });
+            } catch (optErr) {
+              pFs = reqFs.call(docEl);
+            }
+            if (pFs && typeof pFs.then === 'function') {
+              pFs.then(function() {
+                clearTimeout(releaseFlightTimer);
+                mobileGuardState.fullscreenInFlight = false;
+                mobileGuardState.wasInFullscreen = true;
+                mobileGuardState.desktopUserExitedFullscreen = false;
+                finishAfterFullscreen();
+              }).catch(function() {
+                clearTimeout(releaseFlightTimer);
+                mobileGuardState.fullscreenInFlight = false;
+                if (armFallbackOnReject) {
+                  armNextTapLandscapeFullscreen();
+                }
+                finishAfterFullscreen();
+              });
+              return;
+            }
+            clearTimeout(releaseFlightTimer);
+            mobileGuardState.fullscreenInFlight = false;
+          } catch (fsErr) {
+            clearTimeout(releaseFlightTimer);
+            mobileGuardState.fullscreenInFlight = false;
+            if (armFallbackOnReject) {
+              armNextTapLandscapeFullscreen();
+            }
+          }
+        }
+
+        finishAfterFullscreen();
+      }
+
+      function enterLandscapeFullscreen(armFallbackOnReject) {
+        requestUniversalFullscreenExpand({
+          trigger: 'landscape-enter',
+          armFallbackOnReject: armFallbackOnReject !== false
+        });
+      }
+
+      function syncMobileRotateGuard() {
+        var guardEl = document.getElementById('starla-mobile-rotate-guard');
+        if (!guardEl) return evaluateMobileGuard();
+
+        var result = evaluateMobileGuard();
+        var prevReason = mobileGuardState.lastReason;
+        mobileGuardState.lastReason = result.reason;
+
+        var vp = getEffectiveViewportSize();
+        var curOrient = vp.width > vp.height ? 'landscape' : 'portrait';
+        var prevOrient = mobileGuardState.lastOrientation;
+        mobileGuardState.lastOrientation = curOrient;
+
+        var titleEl = document.getElementById('starla-rotate-title');
+        var descEl = document.getElementById('starla-rotate-desc');
+
+        if (result.shouldShowBlackRotateNotice) {
+          guardEl.classList.remove('force-hidden');
+          guardEl.classList.add('is-visible');
+          guardEl.setAttribute('aria-hidden', 'false');
+          if (titleEl && descEl) {
+            if (result.reason === 'exited-fullscreen') {
+              titleEl.textContent = 'Kembali ke Mode Layar Penuh';
+              descEl.textContent = 'Putar perangkat ke posisi landscape atau ketuk layar untuk melanjutkan layar penuh.';
+            } else {
+              titleEl.textContent = 'Putar Layar ke Mode Landscape';
+              descEl.textContent = 'Posisikan ponsel secara mendatar untuk tampilan layar penuh di halaman ini.';
+            }
+          }
+        } else {
+          guardEl.classList.remove('is-visible');
+          guardEl.classList.add('force-hidden');
+          guardEl.setAttribute('aria-hidden', 'true');
+
+          var dimsChanged =
+            Math.abs(vp.width - mobileGuardState.lastFitWidth) > 2 ||
+            Math.abs(vp.height - mobileGuardState.lastFitHeight) > 2;
+
+          var enteredLandscape = curOrient === 'landscape' && prevOrient === 'portrait';
+
+          if (
+            result.isMobileDevice &&
+            result.reason === 'landscape-ready' &&
+            (prevReason === 'portrait' || prevReason === 'minimized' || prevReason === 'exited-fullscreen')
+          ) {
+            enterLandscapeFullscreen(true);
+          } else if (
+            !result.isMobileDevice &&
+            enteredLandscape &&
+            !mobileGuardState.desktopUserExitedFullscreen &&
+            !getFullscreenElement()
+          ) {
+            // Pada tablet/desktop yang berubah dari jendela potret ke mode landscape, auto perluas layar
+            enterLandscapeFullscreen(true);
+          } else {
+            if (
+              curOrient === 'landscape' &&
+              !getFullscreenElement() &&
+              (result.isMobileDevice || !mobileGuardState.desktopUserExitedFullscreen)
+            ) {
+              armNextTapLandscapeFullscreen();
+            }
+            if (dimsChanged) {
+              triggerViewportAutoScaleFit();
+            }
+          }
+        }
+
+        return result;
+      }
+
+      function scheduleMobileRotateGuardSync() {
+        if (mobileGuardState.rafScheduled) return;
+        mobileGuardState.rafScheduled = true;
+        requestAnimationFrame(function() {
+          mobileGuardState.rafScheduled = false;
+          syncMobileRotateGuard();
+        });
+      }
+
+      function initMobileRotateGuard() {
+        var guardEl = document.getElementById('starla-mobile-rotate-guard');
+        if (guardEl && !guardEl.__starlaRotateBound) {
+          guardEl.__starlaRotateBound = true;
+          var onGuardTap = function() {
+            var current = evaluateMobileGuard();
+            if (current.reason === 'exited-fullscreen' || (!current.isPortrait && !current.isMinimized)) {
+              mobileGuardState.wasInFullscreen = false;
+              enterLandscapeFullscreen(false);
+              syncMobileRotateGuard();
+            }
+          };
+          guardEl.addEventListener('click', onGuardTap);
+          guardEl.addEventListener('touchend', onGuardTap, { passive: true });
+        }
+
+        var onOrientationOrViewportChange = function() {
+          scheduleMobileRotateGuardSync();
+          triggerViewportAutoScaleFit();
+          setTimeout(syncMobileRotateGuard, 160);
+          setTimeout(syncMobileRotateGuard, 380);
+        };
+
+        window.addEventListener('resize', scheduleMobileRotateGuardSync, { passive: true });
+        window.addEventListener('orientationchange', onOrientationOrViewportChange);
+
+        try {
+          if (window.screen && window.screen.orientation && window.screen.orientation.addEventListener) {
+            window.screen.orientation.addEventListener('change', onOrientationOrViewportChange);
+          }
+        } catch (e) {}
+
+        try {
+          if (window.visualViewport && window.visualViewport.addEventListener) {
+            window.visualViewport.addEventListener('resize', scheduleMobileRotateGuardSync, { passive: true });
+            window.visualViewport.addEventListener('scroll', function() {
+              if (!isTextInputFocused()) {
+                try { window.scrollTo(0, 0); } catch (sErr) {}
+              }
+            }, { passive: true });
+          }
+        } catch (e) {}
+
+        try {
+          if (window.matchMedia) {
+            var portraitMq = window.matchMedia('(orientation: portrait)');
+            if (typeof portraitMq.addEventListener === 'function') {
+              portraitMq.addEventListener('change', onOrientationOrViewportChange);
+            } else if (typeof portraitMq.addListener === 'function') {
+              portraitMq.addListener(onOrientationOrViewportChange);
+            }
+          }
+        } catch (e) {}
+
+        document.addEventListener('visibilitychange', function() {
+          if (!document.hidden) {
+            setTimeout(function() {
+              syncMobileRotateGuard();
+              triggerViewportAutoScaleFit();
+            }, 90);
+          } else {
+            syncMobileRotateGuard();
+          }
+        });
+
+        var onFullscreenChange = function() {
+          var isFsNow = Boolean(getFullscreenElement());
+          if (isFsNow) {
+            mobileGuardState.wasInFullscreen = true;
+            mobileGuardState.desktopUserExitedFullscreen = false;
+          } else {
+            var evalNow = evaluateMobileGuard();
+            if (!evalNow.isMobileDevice && mobileGuardState.wasInFullscreen) {
+              mobileGuardState.desktopUserExitedFullscreen = true;
+            }
+          }
+          scheduleMobileRotateGuardSync();
+          triggerViewportAutoScaleFit();
+        };
+        document.addEventListener('fullscreenchange', onFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+
+        syncMobileRotateGuard();
+        triggerViewportAutoScaleFit();
+      }
+
+      window.__STARLA_MOBILE_GUARD__ = {
+        evaluate: evaluateMobileGuard,
+        sync: syncMobileRotateGuard,
+        enterLandscapeFullscreen: enterLandscapeFullscreen,
+        requestUniversalFullscreenExpand: requestUniversalFullscreenExpand,
+        syncAutoScaleFit: triggerViewportAutoScaleFit,
+        getState: function() {
+          return {
+            wasInFullscreen: mobileGuardState.wasInFullscreen,
+            desktopUserExitedFullscreen: mobileGuardState.desktopUserExitedFullscreen,
+            lastReason: mobileGuardState.lastReason,
+            viewport: getEffectiveViewportSize(),
+            current: evaluateMobileGuard()
+          };
+        }
+      };
+
       function init() {
         attachFrontStageListeners();
         initScopedObserver();
+        initMobileRotateGuard();
         scheduleDomUpdate();
         try {
           var qs = window.location.search || '';
@@ -1895,7 +2610,7 @@
       }
 
       var StarlaCoreEngine = {
-        version: '4.3.0-production',
+        version: '4.5.0-production',
         canonicalUrl: 'https://faryzt.github.io/starla-360/',
         init: init,
         isTargetVideo5gKz: isTargetVideo5gKz,
@@ -1909,7 +2624,11 @@
         handleFrontStageTap: handleFrontStageTap,
         applyDomTransformations: applyDomTransformations,
         navigateToSlide: navigateToSlide,
-        getCurrentSlideId: getCurrentSlideId
+        getCurrentSlideId: getCurrentSlideId,
+        syncMobileRotateGuard: syncMobileRotateGuard,
+        enterLandscapeFullscreen: enterLandscapeFullscreen,
+        requestUniversalFullscreenExpand: requestUniversalFullscreenExpand,
+        syncAutoScaleFit: triggerViewportAutoScaleFit
       };
 
       window.StarlaCoreEngine = StarlaCoreEngine;
@@ -1919,6 +2638,28 @@
   </script>
 </head>
 <body style="background: #060913" class="cs-HTML theme-classic">
+
+  <!-- ========================================================================= -->
+  <!-- MOBILE VERTICAL / MINIMIZED BLANK BLACK SCREEN + ROTATE DEVICE NOTICE     -->
+  <!-- ========================================================================= -->
+  <div id="starla-mobile-rotate-guard" class="starla-mobile-rotate-guard" role="dialog" aria-modal="true" aria-live="polite" aria-label="Putar Layar ke Mode Landscape" aria-hidden="true" tabindex="0">
+    <div class="starla-rotate-icon-wrap" aria-hidden="true">
+      <svg class="starla-rotate-phone-svg" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path class="starla-rotate-arc" d="M22 46C27 28 43 16 62 16C74 16 85 21 93 29" stroke="#FBBF24" stroke-width="3.5" stroke-linecap="round"/>
+        <path class="starla-rotate-arc" d="M16 39L22 48L31 42" stroke="#FBBF24" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path class="starla-rotate-arc" d="M98 74C93 92 77 104 58 104C46 104 35 99 27 91" stroke="#FBBF24" stroke-width="3.5" stroke-linecap="round"/>
+        <path class="starla-rotate-arc" d="M104 81L98 72L89 78" stroke="#FBBF24" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <g class="starla-rotate-device-group">
+          <rect x="42" y="28" width="36" height="64" rx="7" fill="#0B1120" stroke="#F8FAFC" stroke-width="3"/>
+          <rect x="46.5" y="36" width="27" height="46" rx="2" fill="#1E293B"/>
+          <line x1="55" y1="32.5" x2="65" y2="32.5" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="60" cy="87" r="2.2" fill="#FBBF24"/>
+        </g>
+      </svg>
+    </div>
+    <h2 class="starla-rotate-title" id="starla-rotate-title">Putar Layar ke Mode Landscape</h2>
+    <p class="starla-rotate-desc" id="starla-rotate-desc">Posisikan ponsel secara mendatar untuk tampilan layar penuh di halaman ini.</p>
+  </div>
 
   <!-- ========================================================================= -->
   <!-- STARLA FRONT STAGE (Biometric Fingerprint + Blinking ACCESS Button)       -->
@@ -2292,6 +3033,6 @@
 
 <link rel="stylesheet" href="html5/data/css/output.min.css" data-noprefix/>
 </body>
-<script src="html5/lib/scripts/bootstrapper.min.js"></script>
 <script src="html5/lib/scripts/starla-content-bridge.js"></script>
+<script src="html5/lib/scripts/bootstrapper.min.js"></script>
 </html>

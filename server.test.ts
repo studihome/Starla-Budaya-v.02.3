@@ -189,3 +189,50 @@ test('Vercel Serverless Function compatibility: exported handler is directly cal
   }
 });
 
+test('Hybrid PWA endpoints (/manifest.webmanifest, /manifest.json, /sw.js, and /icons/*) serve cleanly with compliant headers', async () => {
+  const server = await startServer();
+  try {
+    const manifestRes = await request(server, '/manifest.webmanifest');
+    assert.equal(manifestRes.status, 200);
+    assert.ok(
+      String(manifestRes.headers['content-type'] || '').includes(
+        'application/manifest+json'
+      )
+    );
+    const manifest = JSON.parse(manifestRes.body);
+    assert.equal(manifest.id, '/');
+    assert.equal(manifest.name, 'STARLA BUDAYA');
+    assert.ok(manifest.short_name.length <= 12);
+    assert.equal(manifest.display, 'standalone');
+    assert.equal(manifest.start_url, '/');
+    assert.equal(manifest.scope, '/');
+
+    const manifestJsonAlias = await request(server, '/manifest.json');
+    assert.equal(manifestJsonAlias.status, 200);
+
+    const swRes = await request(server, '/sw.js');
+    assert.equal(swRes.status, 200);
+    assert.equal(swRes.headers['service-worker-allowed'], '/');
+    assert.ok(
+      String(swRes.headers['content-type'] || '').includes('javascript')
+    );
+
+    const icon192 = await request(server, '/icons/pwa-192x192.png');
+    assert.equal(icon192.status, 200);
+    assert.ok(String(icon192.headers['content-type'] || '').includes('image/png'));
+
+    const icon512 = await request(server, '/icons/pwa-512x512.png');
+    assert.equal(icon512.status, 200);
+
+    const appleIcon = await request(server, '/icons/apple-touch-icon.png');
+    assert.equal(appleIcon.status, 200);
+
+    const svgIcon = await request(server, '/icons/starla-icon.svg');
+    assert.equal(svgIcon.status, 200);
+    assert.ok(String(svgIcon.headers['content-type'] || '').includes('image/svg+xml'));
+  } finally {
+    server.close();
+  }
+});
+
+

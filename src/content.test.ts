@@ -2131,7 +2131,7 @@ test('Tahap 16: Cari Tahu Button Replacement (5b7bpGxEsZl.png -> cari tahu.png),
   assert.equal(pameranBtn?.action.type, 'goto-slide');
   assert.equal(pameranBtn?.action.targetSlideId, PAMERAN_360_SLIDE_ID);
 
-  // Check that all 4 native buttons keep their exact horizontal xPos (xDeltaPct: 0) and have tidied vertical spacing so 360° Pameran sits directly below 360° Budaya without overlap
+  // Check that all 4 native buttons keep their exact horizontal xPos (xDeltaPct: 0, centerX: 899) and have tidied vertical spacing so 360° Pameran sits directly below 360° Budaya with safe bottom margin
   const sinemaOv = menuSlide.elementOverrides?.['5ZPukeMFffY']!;
   const bermainOv = menuSlide.elementOverrides?.['5cPSgbCeIlr']!;
   const budaya360Ov = menuSlide.elementOverrides?.['6afmjIda5Z2']!;
@@ -2140,6 +2140,32 @@ test('Tahap 16: Cari Tahu Button Replacement (5b7bpGxEsZl.png -> cari tahu.png),
   assert.equal(cariTahuOv.xDeltaPct, 0);
   assert.equal(bermainOv.xDeltaPct, 0);
   assert.equal(budaya360Ov.xDeltaPct, 0);
+
+  // Verify exact tidied vertical shifts (yDeltaPct) and resulting yPos on the 720px canvas
+  assert.equal(sinemaOv.yDeltaPct, -8.3333);
+  assert.equal(cariTahuOv.yDeltaPct, -10.5556);
+  assert.equal(bermainOv.yDeltaPct, -13.0556);
+  assert.equal(budaya360Ov.yDeltaPct, -11.9444);
+  assert.equal(pameranBtn?.x, 55.2344);
+  assert.equal(pameranBtn?.y, 74.1667);
+
+  const sinemaYPos = Math.round(104 + ((sinemaOv.yDeltaPct || 0) / 100) * 720);
+  const cariTahuYPos = Math.round(
+    208 + ((cariTahuOv.yDeltaPct || 0) / 100) * 720
+  );
+  const bermainYPos = Math.round(
+    360 + ((bermainOv.yDeltaPct || 0) / 100) * 720
+  );
+  const budaya360YPos = Math.round(
+    480 + ((budaya360Ov.yDeltaPct || 0) / 100) * 720
+  );
+  const pameranYPos = Math.round((pameranBtn!.y / 100) * 720);
+
+  assert.equal(sinemaYPos, 44);
+  assert.equal(cariTahuYPos, 132);
+  assert.equal(bermainYPos, 266);
+  assert.equal(budaya360YPos, 394);
+  assert.equal(pameranYPos, 534);
 
   const sinemaTop = (104 / 720) * 100 + (sinemaOv.yDeltaPct || 0);
   const cariTahuTop = (208 / 720) * 100 + (cariTahuOv.yDeltaPct || 0);
@@ -2155,8 +2181,1174 @@ test('Tahap 16: Cari Tahu Button Replacement (5b7bpGxEsZl.png -> cari tahu.png),
     '360° Pameran button must be positioned directly below 360° Budaya button'
   );
   assert.ok(
-    pameranTop + pameranBtn!.height <= 98,
-    'All 5 menu buttons must fit within the 720px slide height'
+    pameranTop + pameranBtn!.height <= 92,
+    'Bottom button (360° Pameran) must have a safe margin from the bottom edge of the 720px slide'
+  );
+
+  // 4. Verify cari_tahu.png and 5b7bpGxEsZl.png exist in both mobile/ and story_content/ with 32-bit RGBA transparency
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  for (const relPath of [
+    'mobile/cari_tahu.png',
+    'story_content/cari_tahu.png',
+    'mobile/5b7bpGxEsZl.png',
+    'story_content/5b7bpGxEsZl.png',
+  ]) {
+    const absPath = path.join(process.cwd(), relPath);
+    assert.ok(fs.existsSync(absPath), `${relPath} must exist`);
+    const buf = fs.readFileSync(absPath);
+    // PNG colorType at byte 25 === 6 (32-bit RGBA)
+    assert.equal(buf[25], 6, `${relPath} must be 32-bit RGBA PNG`);
+  }
+
+  // 5. Verify transformStorylineProvideData on Slide 5iew2M44w24 keeps 5Vj2vgTep1J on mobile/5b7bpGxEsZl.png (714x304 fit:contain), aligns all 5 menu buttons on centerX = 899, and enforces state layer stacking above base-layer
+  const rawSlideMenu = fs.readFileSync(
+    path.join(process.cwd(), 'html5/data/js/5iew2M44w24.js'),
+    'utf8'
+  );
+  let menuSlideRawJson = '';
+  const fakeWin = {
+    globalProvideData: (_type: string, jsonStr: string) => {
+      menuSlideRawJson = jsonStr;
+    },
+  };
+  new Function('window', rawSlideMenu)(fakeWin);
+  assert.ok(menuSlideRawJson.length > 0);
+
+  const transformedMenuStr = transformStorylineProvideData(
+    'slide',
+    menuSlideRawJson,
+    updated
+  );
+  const transformedMenu = JSON.parse(transformedMenuStr);
+  const baseObjs = transformedMenu.slideLayers[0].objects as Array<any>;
+  const menuIds = [
+    '5ZPukeMFffY',
+    '5Vj2vgTep1J',
+    '5cPSgbCeIlr',
+    '6afmjIda5Z2',
+    'btn_pameran_360_budaya',
+  ];
+  for (const id of menuIds) {
+    const obj = baseObjs.find((o) => o.id === id);
+    assert.ok(obj, `Menu button ${id} must exist in baseLayer.objects`);
+    assert.equal(
+      obj.xPos + obj.width / 2,
+      899,
+      `Menu button ${id} must be centered at centerX = 899`
+    );
+  }
+  const cariTahuRuntimeObj = baseObjs.find((o) => o.id === '5Vj2vgTep1J');
+  assert.equal(cariTahuRuntimeObj.imagelib[0].url, 'mobile/5b7bpGxEsZl.png');
+
+  const bridgeSrc = fs.readFileSync(
+    path.join(process.cwd(), 'src/utils/contentRuntimeBridge.ts'),
+    'utf8'
+  );
+  assert.ok(bridgeSrc.includes('starla-menu-layer-stacking'));
+  assert.ok(bridgeSrc.includes('#slide-window .slide-layer.base-layer'));
+  assert.ok(bridgeSrc.includes('#slide-window .slide-layer:not(.base-layer)'));
+
+  // 6. Verify SmartAdminLoginPortal has neutral password placeholder, autocomplete="current-password", #0B1F3A / #F7B500 accents, and no password hint in UI
+  const loginPortalSrc = fs.readFileSync(
+    path.join(process.cwd(), 'src/features/admin/SmartAdminLoginPortal.tsx'),
+    'utf8'
+  );
+  assert.ok(loginPortalSrc.includes('placeholder="Masukkan kata sandi"'));
+  assert.ok(loginPortalSrc.includes('autoComplete="current-password"'));
+  assert.ok(loginPortalSrc.includes('#0B1F3A'));
+  assert.ok(loginPortalSrc.includes('#F7B500'));
+  assert.ok(!loginPortalSrc.includes('(123456)'));
+});
+
+test('Tahap 17: wrapProvideFn high-frequency slide update caching, applyStarlaMenuAndPameranUpdate synchronization, and last-opened slide persistence on refresh', async () => {
+  const {
+    wrapProvideFn,
+    clearProvideTransformCache,
+    getProvideTransformCacheStats,
+  } = await import('./main');
+  const {
+    saveLastActiveSlideState,
+    loadLastActiveSlideState,
+    clearLastActiveSlideState,
+  } = await import('./utils/contentRuntimeBridge');
+
+  clearProvideTransformCache();
+
+  const receivedPayloads: Array<{ dataType: string; json: string }> = [];
+  const rawProvide = ((dataType: string, rawJson: string) => {
+    receivedPayloads.push({ dataType, json: rawJson });
+  }) as any;
+
+  // Provide an un-synced clone of defaultContent without tur360_pameran_budaya to verify automatic synchronization via applyStarlaMenuAndPameranUpdate
+  const unsyncedContent: ContentSchema = JSON.parse(
+    JSON.stringify(defaultContent)
+  );
+  delete unsyncedContent.slides['tur360_pameran_budaya'];
+  unsyncedContent.slideOrder = unsyncedContent.slideOrder.filter(
+    (id) => id !== 'tur360_pameran_budaya'
+  );
+  if (unsyncedContent.slides['5iew2M44w24']) {
+    unsyncedContent.slides['5iew2M44w24'].canvasElements = [];
+  }
+
+  const fakeWin: Record<string, unknown> = {
+    __STARLA_CONTENT__: unsyncedContent,
+  };
+  const wrapped = wrapProvideFn(rawProvide, fakeWin);
+
+  // 1. Non-transformed dataType (e.g. 'frame') bypasses cache & JSON parsing immediately
+  wrapped('frame', '{"frame":true}');
+  assert.equal(getProvideTransformCacheStats().misses, 0);
+  assert.equal(getProvideTransformCacheStats().hits, 0);
+
+  // 2. Transform Slide 5iew2M44w24 across high-frequency calls: first call is a miss and synchronizes applyStarlaMenuAndPameranUpdate; subsequent calls hit O(1) cache
+  const rawSlideMenu = fs.readFileSync(
+    path.join(process.cwd(), 'html5/data/js/5iew2M44w24.js'),
+    'utf8'
+  );
+  let menuSlideRawJson = '';
+  new Function('window', rawSlideMenu)({
+    globalProvideData: (_t: string, j: string) => {
+      menuSlideRawJson = j;
+    },
+  });
+
+  wrapped('slide', menuSlideRawJson);
+  const statsAfterFirst = getProvideTransformCacheStats();
+  assert.equal(statsAfterFirst.misses, 1);
+  assert.equal(statsAfterFirst.hits, 0);
+
+  // Verify applyStarlaMenuAndPameranUpdate was automatically synchronized onto fakeWin.__STARLA_CONTENT__
+  const syncedOnWin = fakeWin.__STARLA_CONTENT__ as ContentSchema;
+  assert.ok(
+    syncedOnWin.slides['tur360_pameran_budaya'],
+    'wrapProvideFn must synchronize tur360_pameran_budaya via applyStarlaMenuAndPameranUpdate'
+  );
+  const lastPayload = JSON.parse(
+    receivedPayloads[receivedPayloads.length - 1].json
+  );
+  const hasPameranInTransformed = lastPayload.slideLayers[0].objects.some(
+    (o: any) => o.id === 'btn_pameran_360_budaya'
+  );
+  assert.ok(
+    hasPameranInTransformed,
+    'Transformed slide 5iew2M44w24 must contain btn_pameran_360_budaya'
+  );
+
+  // Simulate 25 high-frequency slide updates with the same payload
+  for (let i = 0; i < 25; i++) {
+    wrapped('slide', menuSlideRawJson);
+  }
+  const statsAfterBurst = getProvideTransformCacheStats();
+  assert.equal(statsAfterBurst.misses, 1);
+  assert.equal(statsAfterBurst.hits, 25);
+
+  // 3. Verify cache invalidation when content is updated
+  const modifiedContent = applySlidePatch(syncedOnWin, '5iew2M44w24', {
+    title: 'Menu Materi Budaya Baru',
+  });
+  fakeWin.__STARLA_CONTENT__ = modifiedContent;
+  wrapped('slide', menuSlideRawJson);
+  const statsAfterContentChange = getProvideTransformCacheStats();
+  assert.equal(
+    statsAfterContentChange.misses,
+    2,
+    'Cache must invalidate when __STARLA_CONTENT__ reference updates'
+  );
+  const updatedPayload = JSON.parse(
+    receivedPayloads[receivedPayloads.length - 1].json
+  );
+  assert.equal(updatedPayload.title, 'Menu Materi Budaya Baru');
+
+  // 4. Verify last-opened slide persistence across simulated browser refresh/reload
+  const storageMap = new Map<string, string>();
+  const sessionMap = new Map<string, string>();
+  const prevWin = (globalThis as any).window;
+  (globalThis as any).window = {
+    localStorage: {
+      getItem: (k: string) => storageMap.get(k) ?? null,
+      setItem: (k: string, v: string) => storageMap.set(k, v),
+      removeItem: (k: string) => storageMap.delete(k),
+    },
+    sessionStorage: {
+      getItem: (k: string) => sessionMap.get(k) ?? null,
+      setItem: (k: string, v: string) => sessionMap.set(k, v),
+      removeItem: (k: string) => sessionMap.delete(k),
+    },
+  };
+  try {
+    saveLastActiveSlideState({
+      slideId: '5iew2M44w24',
+      slideIndex: 4,
+      frontOpened: true,
+      studentName: 'Budi',
+      studentSchool: 'SDN 1 Nusantara',
+    });
+    const loadedFromLocal = loadLastActiveSlideState();
+    assert.ok(loadedFromLocal);
+    assert.equal(loadedFromLocal.slideId, '5iew2M44w24');
+    assert.equal(loadedFromLocal.frontOpened, true);
+    assert.equal(loadedFromLocal.studentName, 'Budi');
+
+    // Simulate localStorage primary key loss while sessionStorage survives refresh
+    storageMap.delete('starla_last_slide_v1');
+    const recoveredFromSession = loadLastActiveSlideState();
+    assert.ok(recoveredFromSession);
+    assert.equal(recoveredFromSession.slideId, '5iew2M44w24');
+
+    clearLastActiveSlideState();
+    assert.equal(loadLastActiveSlideState(), null);
+  } finally {
+    (globalThis as any).window = prevWin;
+  }
+});
+
+test('Tahap 18: Regresi Presisi Slide 6 -> Slide 43, Slide 40 Drag & Drop, Slide 25-35 Umpan Balik Benar/Salah/Lanjut, dan Anti-Mutasi #preso', async () => {
+  const {
+    wrapProvideFn,
+    clearProvideTransformCache,
+    getProvideTransformCacheStats,
+  } = await import('./main');
+  const { extractSlideIdFromProvideJson } = await import(
+    './utils/contentRuntimeBridge'
+  );
+
+  // (a) Script load order & byte-for-byte parity between index.html and story.html
+  const indexHtml = fs.readFileSync(
+    path.join(process.cwd(), 'index.html'),
+    'utf8'
+  );
+  const storyHtml = fs.readFileSync(
+    path.join(process.cwd(), 'story.html'),
+    'utf8'
+  );
+  assert.equal(
+    indexHtml,
+    storyHtml,
+    'index.html dan story.html wajib 100% sinkron identik'
+  );
+
+  const bridgeScriptIdx = indexHtml.indexOf(
+    'html5/lib/scripts/starla-content-bridge.js'
+  );
+  const bootstrapperScriptIdx = indexHtml.indexOf(
+    'html5/lib/scripts/bootstrapper.min.js'
+  );
+  assert.ok(
+    bridgeScriptIdx > 0 &&
+      bootstrapperScriptIdx > 0 &&
+      bridgeScriptIdx < bootstrapperScriptIdx,
+    'starla-content-bridge.js wajib dimuat SEBELUM bootstrapper.min.js agar data.js & paths.js ter-patch sebelum Slide 43 dibuka'
+  );
+
+  // Helper to extract raw Storyline JSON from html5/data/js/<name>.js
+  const loadRawProvide = (relFile: string): string => {
+    const src = fs.readFileSync(path.join(process.cwd(), relFile), 'utf8');
+    let captured = '';
+    const gp = (_type: string, jsonStr: string) => {
+      captured = jsonStr;
+    };
+    new Function('window', 'globalProvideData', src)(
+      { globalProvideData: gp },
+      gp
+    );
+    assert.ok(captured.length > 0, `Payload ${relFile} harus terbaca`);
+    return captured;
+  };
+
+  // Verify O(1) extractSlideIdFromProvideJson accurately resolves real Storyline slide payloads
+  const rawSlide6 = loadRawProvide('html5/data/js/5iWbenzMEWM.js');
+  const rawSlide43 = loadRawProvide('html5/data/js/5iew2M44w24.js');
+  const rawSlide40 = loadRawProvide('html5/data/js/6G1VrKuOhCw.js');
+  const rawSlide25 = loadRawProvide('html5/data/js/6oOWqUyP2WL.js');
+  const rawSlide35 = loadRawProvide('html5/data/js/6ddgVMlBGEg.js');
+  const rawDataJs = loadRawProvide('html5/data/js/data.js');
+  const rawPathsJs = loadRawProvide('html5/data/js/paths.js');
+
+  assert.equal(extractSlideIdFromProvideJson(rawSlide6), '5iWbenzMEWM');
+  assert.equal(extractSlideIdFromProvideJson(rawSlide43), '5iew2M44w24');
+  assert.equal(extractSlideIdFromProvideJson(rawSlide40), '6G1VrKuOhCw');
+  assert.equal(extractSlideIdFromProvideJson(rawSlide25), '6oOWqUyP2WL');
+  assert.equal(extractSlideIdFromProvideJson(rawSlide35), '6ddgVMlBGEg');
+
+  // Verify full runtime provide sequence: data.js -> paths.js -> Slide 6 -> Slide 43 -> Slide 40 -> Slide 25
+  clearProvideTransformCache();
+  const capturedPayloads = new Map<string, string>();
+  const fakeWin: Record<string, unknown> = {
+    __STARLA_CONTENT__: JSON.parse(JSON.stringify(defaultContent)),
+  };
+  const wrapped = wrapProvideFn(
+    ((dataType: string, jsonStr: string) => {
+      const key =
+        dataType === 'slide'
+          ? `slide:${extractSlideIdFromProvideJson(jsonStr) || 'unknown'}`
+          : dataType;
+      capturedPayloads.set(key, jsonStr);
+    }) as any,
+    fakeWin
+  );
+
+  wrapped('data', rawDataJs);
+  wrapped('paths', rawPathsJs);
+  wrapped('slide', rawSlide6);
+  wrapped('slide', rawSlide43);
+  wrapped('slide', rawSlide40);
+  wrapped('slide', rawSlide25);
+
+  // 1. Verify data.js has assetLib[380] and paths.js has commandset-3860 & commandset-3870 (zero undefined lookups on Slide 43)
+  const parsedData = JSON.parse(capturedPayloads.get('data') || '{}');
+  assert.equal(
+    parsedData.assetLib?.[380]?.id,
+    380,
+    'data.js wajib mendaftarkan assetLib[380] untuk tombol 360° Pameran'
+  );
+  assert.equal(parsedData.assetLib?.[380]?.url, 'mobile/pameran.png');
+
+  const parsedPaths = JSON.parse(capturedPayloads.get('paths') || '{}');
+  assert.ok(
+    parsedPaths.Lib?.['commandset-3860'],
+    'paths.js wajib mendaftarkan commandset-3860 untuk state normal tombol 360° Pameran'
+  );
+  assert.ok(
+    parsedPaths.Lib?.['commandset-3870'],
+    'paths.js wajib mendaftarkan commandset-3870 untuk state hover tombol 360° Pameran'
+  );
+
+  // 2. Verify Slide 6 (5iWbenzMEWM) passes through cleanly with intact Next trigger -> Slide 43 (5iew2M44w24)
+  const slide6Out = capturedPayloads.get('slide:5iWbenzMEWM') || '';
+  assert.equal(
+    slide6Out,
+    rawSlide6,
+    'Slide 6 tanpa override harus pass-through 100% utuh'
+  );
+  const parsedSlide6 = JSON.parse(slide6Out);
+  const slide6NextBtn = parsedSlide6.slideLayers[0].objects.find(
+    (o: any) => o.id === '6g9PyClc9Ga'
+  );
+  assert.ok(slide6NextBtn, 'Tombol Next Slide 6 (6g9PyClc9Ga) wajib ada');
+  assert.ok(
+    JSON.stringify(slide6NextBtn.events).includes('_player.5sAEMI5psmg.5iew2M44w24'),
+    'Trigger navigasi Slide 6 -> Slide 43 (5iew2M44w24) wajib utuh'
+  );
+
+  // 3. Verify Slide 43 (5iew2M44w24) renders all 5 menu buttons with valid asset/commandset refs and unique depth/tabIndex
+  const parsedSlide43 = JSON.parse(
+    capturedPayloads.get('slide:5iew2M44w24') || '{}'
+  );
+  const menuObjs = parsedSlide43.slideLayers[0].objects as Array<any>;
+  for (const btnId of [
+    '5ZPukeMFffY',
+    '5Vj2vgTep1J',
+    '5cPSgbCeIlr',
+    '6afmjIda5Z2',
+    'btn_pameran_360_budaya',
+  ]) {
+    assert.ok(
+      menuObjs.some((o) => o.id === btnId),
+      `Tombol menu ${btnId} wajib tampil di Slide 43 (5iew2M44w24)`
+    );
+  }
+  const pameranObj = menuObjs.find((o) => o.id === 'btn_pameran_360_budaya');
+  const budaya360Obj = menuObjs.find((o) => o.id === '6afmjIda5Z2');
+  assert.notEqual(
+    pameranObj.depth,
+    budaya360Obj.depth,
+    'depth btn_pameran_360_budaya tidak boleh bertabrakan dengan 6afmjIda5Z2'
+  );
+  assert.equal(pameranObj.imagelib[0].assetId, 380);
+  assert.equal(pameranObj.data.vectorData.pr.i, 3860);
+  assert.equal(pameranObj.states[0].data.vectorData.pr.i, 3870);
+
+  // Verify LRU cache hit on Slide 43 stays valid and hits O(1) cache
+  const missesBeforeRevisit = getProvideTransformCacheStats().misses;
+  const hitsBeforeRevisit = getProvideTransformCacheStats().hits;
+  wrapped('slide', rawSlide43);
+  assert.equal(getProvideTransformCacheStats().misses, missesBeforeRevisit);
+  assert.equal(getProvideTransformCacheStats().hits, hitsBeforeRevisit + 1);
+
+  // 4. Verify Slide 40 (6G1VrKuOhCw) keeps all 10 drag items, 2 drop targets, and Selesai -> Slide 41 trigger intact
+  const parsedSlide40 = JSON.parse(
+    capturedPayloads.get('slide:6G1VrKuOhCw') || '{}'
+  );
+  const s40Objs = parsedSlide40.slideLayers[0].objects as Array<any>;
+  const s40Selesai = s40Objs.find((o) => o.id === '6PGiQBN0VYp');
+  assert.ok(s40Selesai, 'Tombol Selesai Slide 40 (6PGiQBN0VYp) wajib ada');
+  assert.ok(
+    JSON.stringify(s40Selesai.events).includes('_player.5sAEMI5psmg.6WIqLhHr1Cm'),
+    'Tombol Selesai Slide 40 wajib menuju Slide 41 (6WIqLhHr1Cm)'
+  );
+  assert.ok(
+    s40Objs.some((o) => o.id === '6YRB5UIjNas') &&
+      s40Objs.some((o) => o.id === '5uLET0cr0nZ'),
+    'Drop target Benar & Salah pada Slide 40 wajib utuh'
+  );
+
+  // 5. Verify Slide 25 (6oOWqUyP2WL) keeps Benar/Salah layers and Lanjut buttons -> Slide 26 (6fJRLUtSDVL) intact
+  const parsedSlide25 = JSON.parse(
+    capturedPayloads.get('slide:6oOWqUyP2WL') || '{}'
+  );
+  assert.equal(parsedSlide25.slideLayers.length, 3);
+  const s25L1Lanjut = parsedSlide25.slideLayers[1].objects.find(
+    (o: any) => o.id === '67BmTMfY8zv'
+  );
+  const s25L2Lanjut = parsedSlide25.slideLayers[2].objects.find(
+    (o: any) => o.id === '6UTaTWhJ8Dx'
+  );
+  assert.ok(
+    JSON.stringify(s25L1Lanjut?.events).includes('_player.5sAEMI5psmg.6fJRLUtSDVL') &&
+      JSON.stringify(s25L2Lanjut?.events).includes('_player.5sAEMI5psmg.6fJRLUtSDVL'),
+    'Tombol Lanjut layer Salah & Benar Slide 25 wajib berpindah ke Slide 26'
+  );
+
+  // (b) Stacking & backdrop rules in index.html & contentRuntimeBridge.ts must NOT block Benar/Salah/Lanjut or Slide 40 drag-and-drop
+  const backdropBlockMatch = indexHtml.match(
+    /\.slide-layer:not\(\.base-layer\)\.shown::before[\s\S]*?\{([\s\S]*?)\}/
+  );
+  assert.ok(backdropBlockMatch, 'Aturan CSS .slide-layer:not(.base-layer).shown::before wajib ada');
+  assert.ok(
+    backdropBlockMatch[1].includes('pointer-events: none !important'),
+    'Backdrop ::before wajib memiliki pointer-events: none !important'
+  );
+  assert.ok(
+    backdropBlockMatch[1].includes('z-index: 0 !important'),
+    'Backdrop ::before wajib berada di z-index: 0 !important (di belakang tombol interaktif)'
+  );
+  assert.ok(
+    !indexHtml.includes('.slide-object.use-hand:not(.slide-object-video)'),
+    'Aturan blanket .slide-object.use-hand tidak boleh memaksa z-index/pointer-events pada seluruh objek dekoratif & drag-and-drop'
+  );
+
+  // Verify decorative quiz feedback GIFs/banners & Slide 40 backgrounds are pointer-events: none
+  for (const decId of [
+    '5s5fyaUq5F5',
+    '5mLhj75cZ4L',
+    '6n4v1TVPYkj',
+    '5cdGs3Yklaw',
+    '6iBj0j4Wyvj',
+    '6ExPND8186F',
+    '647GXvbCxZp',
+    '5Uu6byOFyRq',
+  ]) {
+    const decRulePattern = new RegExp(
+      `\\[data-model-id="${decId}"\\][\\s\\S]{0,450}?pointer-events:\\s*none\\s*!important`
+    );
+    assert.ok(
+      decRulePattern.test(indexHtml),
+      `Objek dekoratif ${decId} wajib memiliki pointer-events: none !important agar tidak memblokir klik/drag`
+    );
+  }
+
+  // Verify #starla-menu-layer-stacking in contentRuntimeBridge.ts does not force pointer-events: auto on all .slide-object / .use-hand
+  const bridgeSrc = fs.readFileSync(
+    path.join(process.cwd(), 'src/utils/contentRuntimeBridge.ts'),
+    'utf8'
+  );
+  assert.ok(
+    !bridgeSrc.includes('#slide-window .slide-layer:not(.base-layer).shown > .slide-object'),
+    '#starla-menu-layer-stacking tidak boleh memaksa pointer-events: auto pada seluruh > .slide-object'
+  );
+  assert.ok(
+    !bridgeSrc.includes('#slide-window .slide-layer:not(.base-layer).shown .use-hand'),
+    '#starla-menu-layer-stacking tidak boleh memaksa pointer-events: auto pada .use-hand dekoratif'
+  );
+  assert.ok(
+    bridgeSrc.includes(
+      '#slide-window .slide-layer:not(.base-layer).shown::before { z-index: 0 !important; pointer-events: none !important; }'
+    ),
+    '#starla-menu-layer-stacking wajib menetapkan z-index: 0 & pointer-events: none pada ::before'
+  );
+
+  // (c) Verify zero illegal DOM node insertion/mutation inside React 0.14 #preso tree
+  const playerSrc = fs.readFileSync(
+    path.join(process.cwd(), 'src/components/StarlaPlayer.tsx'),
+    'utf8'
+  );
+  assert.ok(
+    !playerSrc.includes('slideWindowEl.appendChild') &&
+      !playerSrc.includes('sw.appendChild') &&
+      !playerSrc.includes('#preso') &&
+      playerSrc.includes('document.body.appendChild(host)'),
+    'StarlaPlayer wajib merender portal di document.body, bukan menyisipkan node asing ke #preso / #slide-window'
+  );
+  assert.ok(
+    !bridgeSrc.includes('slideWindow.appendChild') &&
+      !bridgeSrc.includes('slideWindow.insertBefore') &&
+      !bridgeSrc.includes('el.appendChild'),
+    'contentRuntimeBridge tidak boleh menyisipkan node DOM asing ke pohon #preso'
+  );
+  assert.ok(
+    !indexHtml.includes('layer.insertBefore') &&
+      !indexHtml.includes('layer.appendChild') &&
+      !indexHtml.includes('slideWindow.appendChild'),
+    'index.html tidak boleh menyisipkan node DOM asing ke .slide-layer atau #preso'
   );
 });
+
+test('Tahap 19: Cache Monitor Removal, Original Fingerprint Front-Stage, and Mobile Portrait/Minimized Rotate Guard with Auto-Fullscreen Landscape', async () => {
+  const {
+    wrapProvideFn,
+    clearProvideTransformCache,
+    getProvideTransformCacheStats,
+  } = await import('./main');
+  const {
+    detectMobileViewport,
+    evaluateMobileOrientationGuard,
+  } = await import('./utils/mobileOrientationGuard');
+
+  // 1. Verify wrapProvideFn Cache Monitor UI & telemetry files are completely removed
+  assert.equal(
+    fs.existsSync(
+      path.join(process.cwd(), 'src/components/ProvideCacheDiagnosticsOverlay.tsx')
+    ),
+    false,
+    'ProvideCacheDiagnosticsOverlay.tsx must be deleted'
+  );
+  assert.equal(
+    fs.existsSync(path.join(process.cwd(), 'src/utils/cacheDiagnostics.ts')),
+    false,
+    'cacheDiagnostics.ts must be deleted'
+  );
+  const appSrc = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.ok(
+    !appSrc.includes('ProvideCacheDiagnosticsOverlay'),
+    'App.tsx must not render ProvideCacheDiagnosticsOverlay'
+  );
+
+  // 2. Verify lightweight wrapProvideFn LRU cache & live mutation invalidation still work cleanly
+  clearProvideTransformCache();
+  const received: string[] = [];
+  const mutableContent: ContentSchema = JSON.parse(
+    JSON.stringify(defaultContent)
+  );
+  const fakeWin: Record<string, unknown> = {
+    __STARLA_CONTENT__: mutableContent,
+  };
+  const wrapped = wrapProvideFn(
+    ((_t: string, jsonStr: string) => {
+      received.push(jsonStr);
+    }) as any,
+    fakeWin
+  );
+
+  const sampleSlideJson = JSON.stringify({
+    id: '5iew2M44w24',
+    title: 'Menu Materi',
+    slideLayers: [{ objects: [] }],
+  });
+
+  wrapped('frame', '{"frame":1}');
+  wrapped('slide', sampleSlideJson);
+  wrapped('slide', sampleSlideJson);
+  const stats1 = getProvideTransformCacheStats();
+  assert.equal(stats1.misses, 1);
+  assert.equal(stats1.hits, 1);
+
+  const syncedRef = fakeWin.__STARLA_CONTENT__ as ContentSchema;
+  syncedRef.slides['5iew2M44w24'] = {
+    ...syncedRef.slides['5iew2M44w24'],
+    title: 'Menu Materi Fresh',
+  };
+  wrapped('slide', sampleSlideJson);
+  assert.equal(getProvideTransformCacheStats().misses, 2);
+  assert.equal(
+    JSON.parse(received[received.length - 1]).title,
+    'Menu Materi Fresh'
+  );
+
+  // 3. Pure mobile orientation & minimized-state guard unit tests
+  const desktopSnap = evaluateMobileOrientationGuard({
+    width: 1440,
+    height: 900,
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+    maxTouchPoints: 0,
+    hasCoarsePointer: false,
+  });
+  assert.equal(desktopSnap.isMobileDevice, false);
+  assert.equal(desktopSnap.shouldShowBlackRotateNotice, false);
+  assert.equal(desktopSnap.reason, 'desktop');
+
+  const mobileUa =
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
+  assert.equal(
+    detectMobileViewport({ width: 390, height: 844, userAgent: mobileUa }),
+    true
+  );
+
+  // Mobile Portrait -> Blank black screen + rotate icon notice
+  const portraitRes = evaluateMobileOrientationGuard({
+    width: 390,
+    height: 844,
+    userAgent: mobileUa,
+    maxTouchPoints: 5,
+    hasCoarsePointer: true,
+    isFullscreen: false,
+    fullscreenSupported: true,
+  });
+  assert.equal(portraitRes.isMobileDevice, true);
+  assert.equal(portraitRes.isPortrait, true);
+  assert.equal(portraitRes.shouldShowBlackRotateNotice, true);
+  assert.equal(portraitRes.reason, 'portrait');
+
+  // Mobile Landscape -> Hide black screen & request fullscreen on same page
+  const landscapeRes = evaluateMobileOrientationGuard({
+    width: 844,
+    height: 390,
+    userAgent: mobileUa,
+    maxTouchPoints: 5,
+    hasCoarsePointer: true,
+    isFullscreen: false,
+    wasFullscreen: false,
+    fullscreenSupported: true,
+  });
+  assert.equal(landscapeRes.isMobileDevice, true);
+  assert.equal(landscapeRes.isPortrait, false);
+  assert.equal(landscapeRes.shouldShowBlackRotateNotice, false);
+  assert.equal(landscapeRes.shouldRequestFullscreen, true);
+  assert.equal(landscapeRes.reason, 'landscape-ready');
+
+  // Mobile Minimized (document hidden or split-screen compact) -> Blank black screen + rotate notice
+  const hiddenRes = evaluateMobileOrientationGuard({
+    width: 844,
+    height: 390,
+    userAgent: mobileUa,
+    isHidden: true,
+    fullscreenSupported: true,
+  });
+  assert.equal(hiddenRes.shouldShowBlackRotateNotice, true);
+  assert.equal(hiddenRes.isMinimized, true);
+  assert.equal(hiddenRes.reason, 'minimized');
+
+  const splitScreenRes = evaluateMobileOrientationGuard({
+    width: 640,
+    height: 200,
+    screenWidth: 844,
+    screenHeight: 600,
+    userAgent: mobileUa,
+    fullscreenSupported: true,
+  });
+  assert.equal(splitScreenRes.shouldShowBlackRotateNotice, true);
+  assert.equal(splitScreenRes.isMinimized, true);
+  assert.equal(splitScreenRes.reason, 'minimized');
+
+  // Mobile Exited Fullscreen while in Landscape -> Blank black screen until fullscreen restored
+  const exitedFsRes = evaluateMobileOrientationGuard({
+    width: 844,
+    height: 390,
+    userAgent: mobileUa,
+    wasFullscreen: true,
+    isFullscreen: false,
+    returningFromPortrait: false,
+    fullscreenSupported: true,
+  });
+  assert.equal(exitedFsRes.shouldShowBlackRotateNotice, true);
+  assert.equal(exitedFsRes.reason, 'exited-fullscreen');
+
+  // Rotating back from Portrait -> Landscape after fullscreen must immediately return to landscape fullscreen
+  const returnFromPortraitRes = evaluateMobileOrientationGuard({
+    width: 844,
+    height: 390,
+    userAgent: mobileUa,
+    wasFullscreen: true,
+    isFullscreen: false,
+    returningFromPortrait: true,
+    fullscreenSupported: true,
+  });
+  assert.equal(returnFromPortraitRes.shouldShowBlackRotateNotice, false);
+  assert.equal(returnFromPortraitRes.shouldRequestFullscreen, true);
+  assert.equal(returnFromPortraitRes.reason, 'landscape-ready');
+
+  // 4. Verify index.html & story.html restore fingerprint front-stage and embed mobile rotate guard outside #preso
+  const indexHtml = fs.readFileSync(
+    path.join(process.cwd(), 'index.html'),
+    'utf8'
+  );
+  const storyHtml = fs.readFileSync(
+    path.join(process.cwd(), 'story.html'),
+    'utf8'
+  );
+  assert.equal(indexHtml, storyHtml);
+  assert.ok(
+    !indexHtml.includes('readSavedStarlaSlideForReload') &&
+      !indexHtml.includes('__starlaPendingRestoreSlideId'),
+    'Fingerprint front-stage must never be auto-skipped on boot'
+  );
+  assert.ok(
+    indexHtml.includes('id="starla-front-stage"') &&
+      indexHtml.includes('id="starla-access-btn"') &&
+      indexHtml.includes('id="starla-mobile-rotate-guard"') &&
+      indexHtml.includes('background: #000000 !important') &&
+      indexHtml.includes('@keyframes starlaRotatePhone') &&
+      indexHtml.includes('initMobileRotateGuard') &&
+      indexHtml.includes('enterLandscapeFullscreen'),
+    'index.html & story.html must include fingerprint front-stage and black mobile rotate guard with landscape fullscreen recovery'
+  );
+});
+
+test('Tahap 20: Hybrid PWA Compliance, Transparent Yellow Star Icons, Safe Offline SW, and Auto-Recurring Clean Install Notice', async () => {
+  const {
+    DEFAULT_INITIAL_PROMPT_DELAY_MS,
+    DEFAULT_RECURRING_PROMPT_DELAY_MS,
+    DEFAULT_PROMPT_SCHEDULE_SECONDS,
+    DEFAULT_PROMPT_SCHEDULE_MS,
+    advanceScheduleSlotOnDismiss,
+    buildStandaloneInstallUrl,
+    computeNextPromptDelayMs,
+    detectStandaloneInstalled,
+    getNextScheduledPromptDelayMs,
+    resolveInstallActionMode,
+    shouldScheduleInstallNotice,
+  } = await import('./utils/pwaInstallScheduler');
+
+  // 1. Manifest completeness & icon rules (separate any vs maskable, short_name <= 12)
+  const manifestRaw = fs.readFileSync(
+    path.join(process.cwd(), 'manifest.webmanifest'),
+    'utf8'
+  );
+  const manifest = JSON.parse(manifestRaw);
+  assert.equal(manifest.id, '/');
+  assert.equal(manifest.name, 'STARLA BUDAYA');
+  assert.ok(manifest.short_name.length <= 12);
+  assert.equal(manifest.start_url, '/');
+  assert.equal(manifest.scope, '/');
+  assert.equal(manifest.display, 'standalone');
+  assert.ok(
+    manifest.icons.some(
+      (i: any) => i.sizes === '192x192' && i.purpose === 'any' && i.type === 'image/png'
+    )
+  );
+  assert.ok(
+    manifest.icons.some(
+      (i: any) => i.sizes === '512x512' && i.purpose === 'any' && i.type === 'image/png'
+    )
+  );
+  assert.ok(
+    manifest.icons.some(
+      (i: any) => i.sizes === '512x512' && i.purpose === 'maskable' && i.type === 'image/png'
+    )
+  );
+  assert.ok(
+    manifest.icons.every((i: any) => i.purpose !== 'any maskable'),
+    'Icons must separate any and maskable purposes'
+  );
+
+  // Verify all physical icon files exist and PNGs have PNG magic bytes
+  for (const iconFile of [
+    'icons/starla-icon.svg',
+    'icons/pwa-192x192.png',
+    'icons/pwa-512x512.png',
+    'icons/apple-touch-icon.png',
+    'icons/pwa-maskable-512x512.png',
+  ]) {
+    const full = path.join(process.cwd(), iconFile);
+    assert.ok(fs.existsSync(full), `Icon asset ${iconFile} must exist`);
+    const buf = fs.readFileSync(full);
+    assert.ok(buf.length > 100);
+    if (iconFile.endsWith('.png')) {
+      assert.equal(buf[0], 0x89);
+      assert.equal(buf[1], 0x50);
+      assert.equal(buf[2], 0x4e);
+      assert.equal(buf[3], 0x47);
+    }
+  }
+
+  // 2. Pure Hybrid PWA Install Scheduler & Mode Resolution
+  assert.equal(detectStandaloneInstalled({ displayModeStandalone: true }), true);
+  assert.equal(detectStandaloneInstalled({ navigatorStandalone: true }), true);
+  assert.equal(detectStandaloneInstalled({ installedStorageFlag: '1' }), true);
+  assert.equal(detectStandaloneInstalled({ installedStorageFlag: null }), false);
+
+  assert.equal(
+    resolveInstallActionMode({ hasDeferredPrompt: true }),
+    'native-prompt'
+  );
+  assert.equal(
+    resolveInstallActionMode({ hasDeferredPrompt: false, isInIframe: true }),
+    'embed-standalone-launch'
+  );
+  assert.equal(
+    resolveInstallActionMode({
+      hasDeferredPrompt: false,
+      isInIframe: false,
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+    }),
+    'ios-guide'
+  );
+  assert.equal(
+    resolveInstallActionMode({ installedStorageFlag: '1' }),
+    'already-installed'
+  );
+
+  assert.equal(
+    shouldScheduleInstallNotice({
+      isInstalled: false,
+      isAdminRoute: false,
+      isMobileRotateGuardVisible: false,
+      isNoticeCurrentlyOpen: false,
+    }),
+    true
+  );
+  assert.equal(
+    shouldScheduleInstallNotice({
+      isInstalled: true,
+      isAdminRoute: false,
+      isMobileRotateGuardVisible: false,
+      isNoticeCurrentlyOpen: false,
+    }),
+    false
+  );
+  assert.equal(
+    shouldScheduleInstallNotice({
+      isInstalled: false,
+      isAdminRoute: true,
+      isMobileRotateGuardVisible: false,
+      isNoticeCurrentlyOpen: false,
+    }),
+    false
+  );
+
+  // Exact 40s and 100s per-load / per-refresh checkpoint schedule
+  assert.deepEqual([...DEFAULT_PROMPT_SCHEDULE_SECONDS], [40, 100]);
+  assert.deepEqual([...DEFAULT_PROMPT_SCHEDULE_MS], [40_000, 100_000]);
+  assert.equal(DEFAULT_INITIAL_PROMPT_DELAY_MS, 40_000);
+  assert.equal(DEFAULT_RECURRING_PROMPT_DELAY_MS, 60_000);
+  assert.equal(getNextScheduledPromptDelayMs(0, 0), 40_000);
+  assert.equal(getNextScheduledPromptDelayMs(12_000, 0), 28_000);
+  assert.equal(getNextScheduledPromptDelayMs(48_000, 1), 52_000);
+  assert.equal(getNextScheduledPromptDelayMs(105_000, 2), null);
+  assert.equal(advanceScheduleSlotOnDismiss(48_000, 1), 1);
+  assert.equal(advanceScheduleSlotOnDismiss(112_000, 1), 2);
+
+  assert.equal(computeNextPromptDelayMs(0), DEFAULT_INITIAL_PROMPT_DELAY_MS);
+  assert.equal(computeNextPromptDelayMs(1), DEFAULT_RECURRING_PROMPT_DELAY_MS);
+  assert.equal(computeNextPromptDelayMs(5), DEFAULT_RECURRING_PROMPT_DELAY_MS);
+  assert.ok(
+    buildStandaloneInstallUrl('https://starla.example.com/').includes('install_pwa=1')
+  );
+
+  // 3. Service Worker safety for Storyline MP4 Range requests & cross-origin 360° embeds
+  const swSrc = fs.readFileSync(path.join(process.cwd(), 'sw.js'), 'utf8');
+  assert.ok(swSrc.includes("request.headers.has('range')"));
+  assert.ok(swSrc.includes('!isSameOrigin(url)'));
+  assert.ok(swSrc.includes("/\\.mp4$/i.test(url.pathname)"));
+
+  // 4. Clean centered install notice mounted strictly outside #preso with STARLA Nusantara aesthetic, Unduh button, 40s/100s schedule & smooth motion
+  const noticeSrc = fs.readFileSync(
+    path.join(process.cwd(), 'src/components/PWAInstallNotice.tsx'),
+    'utf8'
+  );
+  assert.ok(
+    noticeSrc.includes('starla-pwa-portal-host') &&
+      noticeSrc.includes('document.body.appendChild(host)') &&
+      !noticeSrc.includes("getElementById('preso')") &&
+      noticeSrc.includes('Mainkan Offline') &&
+      !noticeSrc.includes('Mainkan secara offline') &&
+      noticeSrc.includes("background: 'transparent'") &&
+      noticeSrc.includes('starla-pwa-nusantara-border') &&
+      noticeSrc.includes('starlaKawungSilk') &&
+      noticeSrc.includes('starlaRoyalSurface') &&
+      noticeSrc.includes('starla-pwa-orbit') &&
+      noticeSrc.includes('starla-pwa-download-btn') &&
+      noticeSrc.includes('starla-pwa-motion-styles') &&
+      noticeSrc.includes('DEFAULT_PROMPT_SCHEDULE_MS') &&
+      noticeSrc.includes('prefers-reduced-motion: reduce')
+  );
+
+  // 5. index.html & story.html parity + manifest/SW registration + preserved installed flag
+  const indexHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+  const storyHtml = fs.readFileSync(path.join(process.cwd(), 'story.html'), 'utf8');
+  assert.equal(indexHtml, storyHtml);
+  assert.ok(indexHtml.includes('rel="manifest" href="/manifest.webmanifest"'));
+  assert.ok(indexHtml.includes('rel="apple-touch-icon"'));
+  assert.ok(indexHtml.includes("navigator.serviceWorker.register('/sw.js'"));
+  assert.ok(indexHtml.includes("'starla_pwa_installed_v1'"));
+  assert.ok(!indexHtml.includes('r.unregister()'));
+});
+
+test('Tahap 21: Auto-Rotate Guard, Auto-Scale Fit Layar Engine, SW v2 Offline Safety & Zero-Error Resilience', async () => {
+  const {
+    resolveEffectiveViewport,
+    evaluateAutoRotateAndGuardState,
+    computeAutoScaleFitRect,
+    needsStageRescaleRecovery,
+  } = await import('./utils/viewportFitEngine');
+
+  // 1. VisualViewport precedence prevents mobile toolbar clipping
+  assert.deepEqual(resolveEffectiveViewport(844, 390, 844, 356), {
+    width: 844,
+    height: 356,
+  });
+  assert.deepEqual(resolveEffectiveViewport(1440, 900), {
+    width: 1440,
+    height: 900,
+  });
+
+  // 2. Desktop never triggers black rotate guard
+  const desktopDecision = evaluateAutoRotateAndGuardState({
+    innerWidth: 1440,
+    innerHeight: 900,
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0',
+    maxTouchPoints: 0,
+    hasCoarsePointer: false,
+  });
+  assert.equal(desktopDecision.isMobileDevice, false);
+  assert.equal(desktopDecision.shouldShowBlackRotateNotice, false);
+  assert.equal(desktopDecision.reason, 'desktop');
+
+  // 3. Mobile portrait MUST show black blank screen + rotate notice
+  const portraitDecision = evaluateAutoRotateAndGuardState({
+    innerWidth: 390,
+    innerHeight: 844,
+    orientationType: 'portrait-primary',
+    userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile',
+    maxTouchPoints: 5,
+    hasCoarsePointer: true,
+  });
+  assert.equal(portraitDecision.isMobileDevice, true);
+  assert.equal(portraitDecision.isPortrait, true);
+  assert.equal(portraitDecision.shouldShowBlackRotateNotice, true);
+  assert.equal(portraitDecision.reason, 'portrait');
+
+  // 4. Mobile landscape returning from portrait hides black guard and requests fullscreen
+  const landscapeRecovery = evaluateAutoRotateAndGuardState({
+    innerWidth: 844,
+    innerHeight: 390,
+    screenWidth: 844,
+    screenHeight: 390,
+    orientationType: 'landscape-primary',
+    userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile',
+    maxTouchPoints: 5,
+    hasCoarsePointer: true,
+    wasInFullscreen: true,
+    isFullscreen: false,
+    isFullscreenSupported: true,
+    lastReason: 'portrait',
+  });
+  assert.equal(landscapeRecovery.isPortrait, false);
+  assert.equal(landscapeRecovery.shouldShowBlackRotateNotice, false);
+  assert.equal(landscapeRecovery.shouldRequestFullscreen, true);
+  assert.equal(landscapeRecovery.shouldResetWasInFullscreen, true);
+  assert.equal(landscapeRecovery.reason, 'landscape-ready');
+
+  // 5. Mobile landscape with virtual keyboard open while typing NEVER triggers black minimized screen
+  const typingInLandscape = evaluateAutoRotateAndGuardState({
+    innerWidth: 844,
+    innerHeight: 390,
+    visualViewportWidth: 844,
+    visualViewportHeight: 165,
+    screenWidth: 844,
+    screenHeight: 390,
+    orientationType: 'landscape-primary',
+    userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile',
+    maxTouchPoints: 5,
+    hasCoarsePointer: true,
+    isTextInputFocused: true,
+    wasInFullscreen: true,
+    isFullscreen: false,
+    isFullscreenSupported: true,
+  });
+  assert.equal(typingInLandscape.shouldShowBlackRotateNotice, false);
+  assert.equal(typingInLandscape.isMinimized, false);
+  assert.equal(typingInLandscape.reason, 'landscape-ready');
+
+  // 6. Mobile landscape compact split-screen WITHOUT text input triggers minimized black guard
+  const compactSplit = evaluateAutoRotateAndGuardState({
+    innerWidth: 844,
+    innerHeight: 150,
+    screenWidth: 844,
+    screenHeight: 844,
+    orientationType: 'landscape-primary',
+    userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile',
+    maxTouchPoints: 5,
+    hasCoarsePointer: true,
+    isTextInputFocused: false,
+  });
+  assert.equal(compactSplit.shouldShowBlackRotateNotice, true);
+  assert.equal(compactSplit.reason, 'minimized');
+
+  // 7. Auto-Scale Fit Layar exact 16:9 rect & drift/clipping recovery detection
+  const fitMobileLandscape = computeAutoScaleFitRect(844, 390, 1280, 720);
+  assert.equal(fitMobileLandscape.height, 390);
+  assert.equal(fitMobileLandscape.width, Math.floor((1280 * 390) / 720));
+  assert.ok(fitMobileLandscape.left > 0);
+  assert.equal(fitMobileLandscape.top, 0);
+
+  // Valid fit needs no recovery
+  assert.equal(
+    needsStageRescaleRecovery(
+      {
+        left: fitMobileLandscape.left,
+        top: fitMobileLandscape.top,
+        right: fitMobileLandscape.left + fitMobileLandscape.width,
+        bottom: fitMobileLandscape.top + fitMobileLandscape.height,
+        width: fitMobileLandscape.width,
+        height: fitMobileLandscape.height,
+      },
+      844,
+      390
+    ),
+    false
+  );
+
+  // Clipped overflow or stale undersized stage after rotation triggers recovery
+  assert.equal(
+    needsStageRescaleRecovery(
+      { left: 0, top: 0, right: 1024, bottom: 576, width: 1024, height: 576 },
+      844,
+      390
+    ),
+    true
+  );
+  assert.equal(
+    needsStageRescaleRecovery(
+      { left: 200, top: 80, right: 550, bottom: 277, width: 350, height: 197 },
+      844,
+      390
+    ),
+    true
+  );
+
+  // 8. Service Worker v2 offline Response safety & Network-First bridge bundle
+  const swSrc = fs.readFileSync(path.join(process.cwd(), 'sw.js'), 'utf8');
+  assert.ok(swSrc.includes("const SW_VERSION = 'starla-budaya-pwa-v2'"));
+  assert.ok(swSrc.includes('function createOfflineEmptyResponse('));
+  assert.ok(swSrc.includes("'/html5/lib/scripts/starla-content-bridge.js'"));
+  assert.ok(!swSrc.includes('.catch(() => cached)'));
+
+  // 9. index.html & story.html parity + 100dvh + visualViewport + auto-scale fit engine + orientation chain
+  const indexHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+  const storyHtml = fs.readFileSync(path.join(process.cwd(), 'story.html'), 'utf8');
+  assert.equal(indexHtml, storyHtml);
+  assert.ok(indexHtml.includes('height: 100dvh;'));
+  assert.ok(indexHtml.includes('function triggerViewportAutoScaleFit('));
+  assert.ok(indexHtml.includes('function isTextInputFocused()'));
+  assert.ok(indexHtml.includes('function verifyAndRecoverStageFit()'));
+  assert.ok(indexHtml.includes("window.matchMedia('(orientation: portrait)')"));
+  assert.ok(indexHtml.includes('window.visualViewport'));
+  assert.ok(indexHtml.includes('syncAutoScaleFit: triggerViewportAutoScaleFit'));
+
+  // 10. StarlaPlayer ResizeObserver + PWA compact landscape auto-scale fit + main.tsx safe mount
+  const playerSrc = fs.readFileSync(
+    path.join(process.cwd(), 'src/components/StarlaPlayer.tsx'),
+    'utf8'
+  );
+  assert.ok(playerSrc.includes('ResizeObserver'));
+  assert.ok(playerSrc.includes('visualViewport'));
+
+  const pwaNoticeSrc = fs.readFileSync(
+    path.join(process.cwd(), 'src/components/PWAInstallNotice.tsx'),
+    'utf8'
+  );
+  assert.ok(pwaNoticeSrc.includes('@media (max-height: 440px)'));
+
+  const mainSrc = fs.readFileSync(path.join(process.cwd(), 'src/main.tsx'), 'utf8');
+  assert.ok(mainSrc.includes('__starlaRootMounted'));
+});
+
+test('Tahap 22: Native 16:9 Restore + Universal Auto-Fullscreen (Perluas Layar) on Fingerprint Tap & Landscape Across All Devices', async () => {
+  const { evaluateUniversalFullscreenPolicy } = await import(
+    './utils/viewportFitEngine'
+  );
+
+  // 1. Fingerprint tap expands fullscreen on ALL devices (Desktop, Tablet, Mobile)
+  const desktopFingerprint = evaluateUniversalFullscreenPolicy({
+    trigger: 'fingerprint-access',
+    viewportWidth: 1440,
+    viewportHeight: 900,
+    isFullscreen: false,
+    isFullscreenSupported: true,
+    isMobileDevice: false,
+  });
+  assert.equal(desktopFingerprint.shouldExpandFullscreen, true);
+  assert.equal(desktopFingerprint.shouldLockLandscape, false);
+  assert.equal(desktopFingerprint.reason, 'expand-fingerprint');
+
+  const mobileFingerprint = evaluateUniversalFullscreenPolicy({
+    trigger: 'fingerprint-access',
+    viewportWidth: 390,
+    viewportHeight: 844,
+    isFullscreen: false,
+    isFullscreenSupported: true,
+    isMobileDevice: true,
+  });
+  assert.equal(mobileFingerprint.shouldExpandFullscreen, true);
+  assert.equal(mobileFingerprint.shouldLockLandscape, true);
+  assert.equal(mobileFingerprint.reason, 'expand-fingerprint');
+
+  // 2. Landscape entry expands fullscreen on BOTH Desktop/Tablet AND Mobile
+  const desktopLandscape = evaluateUniversalFullscreenPolicy({
+    trigger: 'landscape-enter',
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    isFullscreen: false,
+    isFullscreenSupported: true,
+    isMobileDevice: false,
+  });
+  assert.equal(desktopLandscape.shouldExpandFullscreen, true);
+  assert.equal(desktopLandscape.shouldArmGestureFallback, true);
+  assert.equal(desktopLandscape.reason, 'expand-landscape');
+
+  const mobileLandscape = evaluateUniversalFullscreenPolicy({
+    trigger: 'landscape-enter',
+    viewportWidth: 844,
+    viewportHeight: 390,
+    isFullscreen: false,
+    isFullscreenSupported: true,
+    isMobileDevice: true,
+  });
+  assert.equal(mobileLandscape.shouldExpandFullscreen, true);
+  assert.equal(mobileLandscape.shouldLockLandscape, true);
+  assert.equal(mobileLandscape.reason, 'expand-landscape');
+
+  // 3. Respects Desktop Esc exit, active typing, portrait landscape-trigger, and /admin route
+  assert.equal(
+    evaluateUniversalFullscreenPolicy({
+      trigger: 'landscape-enter',
+      viewportWidth: 1440,
+      viewportHeight: 900,
+      isFullscreen: false,
+      isFullscreenSupported: true,
+      isMobileDevice: false,
+      desktopUserExitedFullscreen: true,
+    }).reason,
+    'desktop-user-exited'
+  );
+  assert.equal(
+    evaluateUniversalFullscreenPolicy({
+      trigger: 'gesture-bridge',
+      viewportWidth: 844,
+      viewportHeight: 390,
+      isFullscreen: false,
+      isFullscreenSupported: true,
+      isMobileDevice: true,
+      isTextInputFocused: true,
+    }).reason,
+    'typing-protected'
+  );
+  assert.equal(
+    evaluateUniversalFullscreenPolicy({
+      trigger: 'fingerprint-access',
+      viewportWidth: 1440,
+      viewportHeight: 900,
+      isFullscreen: false,
+      isFullscreenSupported: true,
+      isMobileDevice: false,
+      isAdminRoute: true,
+    }).reason,
+    'admin-route'
+  );
+
+  // 4. Verify index.html & story.html parity, pure native #preso restoration (no stretch transform), and universal fullscreen wiring
+  const indexHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+  const storyHtml = fs.readFileSync(path.join(process.cwd(), 'story.html'), 'utf8');
+  assert.equal(indexHtml, storyHtml);
+  assert.ok(!indexHtml.includes('applySmartFullScreenScale'));
+  assert.ok(!indexHtml.includes('MAX_SMART_STRETCH_RATIO'));
+  assert.ok(indexHtml.includes('function requestUniversalFullscreenExpand('));
+  assert.ok(indexHtml.includes("trigger: 'fingerprint-access'"));
+  assert.ok(indexHtml.includes("navigationUI: 'hide'"));
+  assert.ok(indexHtml.includes('desktopUserExitedFullscreen'));
+});
+
 

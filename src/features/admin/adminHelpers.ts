@@ -1178,7 +1178,9 @@ export function applyStarlaMenuAndPameranUpdate(
   const existingCanvasEls = menuSlide.canvasElements || [];
 
   // Clean up any legacy auto-tidied position/size shifts from previous sessions so native buttons use the clean vertical stack with native SVG width/height
-  const LEGACY_AUTO_Y_DELTAS = new Set([0, -5, -3.6111, -8.6111, -8.8889]);
+  const LEGACY_AUTO_Y_DELTAS = new Set([
+    0, -5, -3.6111, -6.3889, -6.6667, -7.7778, -8.4722, -8.6111, -8.8889,
+  ]);
   const cleanNativeOverride = (
     id: string,
     defaults: NonNullable<SlideContentItem['elementOverrides']>[string]
@@ -1204,35 +1206,35 @@ export function applyStarlaMenuAndPameranUpdate(
   const defaultNativeOverrides: NonNullable<
     SlideContentItem['elementOverrides']
   > = {
-    // 1. SINEMA (5ZPukeMFffY) — original xPos: 746, width: 306, height: 102; tidied yPos: 56 (-48px = -6.6667%)
+    // 1. SINEMA (5ZPukeMFffY) — original xPos: 746, width: 306, height: 102 (centerX: 899); tidied yPos: 44 (-60px = -8.3333%)
     '5ZPukeMFffY': cleanNativeOverride('5ZPukeMFffY', {
       xDeltaPct: 0,
-      yDeltaPct: -6.6667,
+      yDeltaPct: -8.3333,
       customLabel: 'Sinema',
       actionType: 'goto-slide' as const,
       targetSlideId: '6IgV5Xf2ecV',
     }),
-    // 2. CARI TAHU (5Vj2vgTep1J) — original xPos: 719, width: 360, height: 154; tidied yPos: 152 (-56px = -7.7778%), image replaced by cari tahu.png (5b7bpGxEsZl.png), link to 6OrD7bra4Ko
+    // 2. CARI TAHU (5Vj2vgTep1J) — original xPos: 719, width: 360, height: 154 (centerX: 899); tidied yPos: 132 (-76px = -10.5556%), image replaced by cari tahu.png (5b7bpGxEsZl.png), link to 6OrD7bra4Ko
     '5Vj2vgTep1J': cleanNativeOverride('5Vj2vgTep1J', {
       xDeltaPct: 0,
-      yDeltaPct: -7.7778,
+      yDeltaPct: -10.5556,
       customImage: 'mobile/5b7bpGxEsZl.png',
       customLabel: 'Cari Tahu',
       actionType: 'goto-slide' as const,
       targetSlideId: '6OrD7bra4Ko',
     }),
-    // 3. BERMAIN (5cPSgbCeIlr) — original xPos: 743, width: 312, height: 123; tidied yPos: 299 (-61px = -8.4722%)
+    // 3. BERMAIN (5cPSgbCeIlr) — original xPos: 743, width: 312, height: 123 (centerX: 899); tidied yPos: 266 (-94px = -13.0556%)
     '5cPSgbCeIlr': cleanNativeOverride('5cPSgbCeIlr', {
       xDeltaPct: 0,
-      yDeltaPct: -8.4722,
+      yDeltaPct: -13.0556,
       customLabel: 'Bermain',
       actionType: 'goto-slide' as const,
       targetSlideId: '6eHtnAfM3bY',
     }),
-    // 4. 360° BUDAYA (6afmjIda5Z2) — original xPos: 691, width: 416, height: 136; tidied yPos: 434 (-46px = -6.3889%)
+    // 4. 360° BUDAYA (6afmjIda5Z2) — original xPos: 691, width: 416, height: 136 (centerX: 899); tidied yPos: 394 (-86px = -11.9444%)
     '6afmjIda5Z2': cleanNativeOverride('6afmjIda5Z2', {
       xDeltaPct: 0,
-      yDeltaPct: -6.3889,
+      yDeltaPct: -11.9444,
       customLabel: '360° Budaya',
       actionType: 'goto-slide' as const,
       targetSlideId: '5jTlwgcUi8o',
@@ -1249,7 +1251,7 @@ export function applyStarlaMenuAndPameranUpdate(
     type: 'image-button' as const,
     label: '360° Pameran',
     x: 55.2344,
-    y: 80,
+    y: 74.1667,
     width: 30,
     height: 15.8333,
     zIndex: 35,
@@ -1279,11 +1281,13 @@ export function applyStarlaMenuAndPameranUpdate(
       el.action?.targetSlideId === PAMERAN_360_SLIDE_ID
   );
 
-  // 5. 360° PAMERAN (pameran.png) tepat di bawah tombol 360° Budaya (yPos: 434, height: 136 -> bottom: 570) -> x=707 (55.2344%), y=576 (80%), w=384 (30%), h=114 (15.8333%)
+  // 5. 360° PAMERAN (pameran.png) tepat di bawah tombol 360° Budaya (yPos: 394, height: 136 -> bottom: 530) -> x=707 (55.2344%, centerX: 899), y=534 (74.1667%), w=384 (30%), h=114 (15.8333%) -> bottom: 648 (72px safe margin from bottom)
   const nextCanvasEls = hasPameranButton
     ? existingCanvasEls.map((el) =>
         el.id === PAMERAN_360_BUTTON_ID &&
-        (Math.abs(el.y - 74.4444) < 0.05 || Math.abs(el.y - 83.3333) < 0.05)
+        (Math.abs(el.y - 74.4444) < 0.05 ||
+          Math.abs(el.y - 83.3333) < 0.05 ||
+          Math.abs(el.y - 80) < 0.05)
           ? {
               ...el,
               x: pameranButtonSpec.x,

@@ -1,6 +1,6 @@
 {
-  "name": "Starla Budaya v.02.1",
-  "description": "STARLA BUDAYA merupakan multimedia pembelajaran interaktif bersertifikat HKI dan buku terbit ber-ISBN yang menyajikan eksplorasi budaya dan nilai Pancasila melalui eksplorasi imersif 360° dan gamifikasi.",
+  "name": "Starla Budaya v.02.3 fix",
+  "description": "",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
