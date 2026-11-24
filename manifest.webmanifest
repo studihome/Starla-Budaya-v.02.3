@@ -1,0 +1,41 @@
+{
+  "id": "/",
+  "name": "STARLA BUDAYA",
+  "short_name": "STARLA",
+  "description": "Multimedia pembelajaran interaktif budaya Nusantara dan nilai Pancasila dengan eksplorasi imersif 360° dan gamifikasi yang dapat dimainkan secara offline.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
+  "orientation": "landscape",
+  "theme_color": "#060913",
+  "background_color": "#060913",
+  "lang": "id-ID",
+  "categories": ["education", "games", "culture"],
+  "icons": [
+    {
+      "src": "/icons/starla-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

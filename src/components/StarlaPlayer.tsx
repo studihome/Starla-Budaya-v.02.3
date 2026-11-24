@@ -12,7 +12,6 @@ import {
   syncContentToLiveDom,
   applySlideElementOverridesToDom,
   protectStarlaLocalStorage,
-  loadLastActiveSlideState,
   saveLastActiveSlideState,
   navigateStorylineToSlide,
 } from '../utils/contentRuntimeBridge';
@@ -175,9 +174,9 @@ export const StarlaPlayer: React.FC = React.memo(() => {
   const latestContentRef = useRef<ContentSchema>(content);
   latestContentRef.current = content;
 
-  const [activePublicSlideId, setActivePublicSlideId] = useState<string>(() => {
-    return content.slideOrder[0] || '6AR4SV4ZYat';
-  });
+  const [activePublicSlideId, setActivePublicSlideId] = useState<string>(
+    () => content.slideOrder[0] || '6AR4SV4ZYat'
+  );
   const activePublicSlideIdRef = useRef<string>(activePublicSlideId);
   activePublicSlideIdRef.current = activePublicSlideId;
 
@@ -248,10 +247,12 @@ export const StarlaPlayer: React.FC = React.memo(() => {
           __starlaWrapped?: boolean;
           __starlaOrig?: GlobalProvideDataFn;
         } = function (this: unknown, dataType: string, rawJson: string) {
+          const activeSchema =
+            win.__STARLA_CONTENT__ || latestContentRef.current;
           const transformedJson = transformStorylineProvideData(
             dataType,
             rawJson,
-            latestContentRef.current
+            activeSchema
           );
           return origFn.call(this, dataType, transformedJson);
         };
@@ -269,45 +270,40 @@ export const StarlaPlayer: React.FC = React.memo(() => {
     if (typeof document === 'undefined' || typeof window === 'undefined') return;
     const sw = document.getElementById('slide-window');
     if (!sw) return;
-    if (window.getComputedStyle(sw).position === 'static') {
-      sw.style.position = 'relative';
-    }
     const targetStage =
       sw.querySelector<HTMLElement>('.slide-transition-container') ||
       sw.querySelector<HTMLElement>('.slide-container') ||
-      sw.querySelector<HTMLElement>('.slide-layer');
-    const swRect = sw.getBoundingClientRect();
-    if (targetStage && swRect.width > 0 && swRect.height > 0) {
-      const stRect = targetStage.getBoundingClientRect();
-      if (stRect.width > 20 && stRect.height > 20) {
-        const left = Math.round(stRect.left - swRect.left);
-        const top = Math.round(stRect.top - swRect.top);
-        const width = Math.round(stRect.width);
-        const height = Math.round(stRect.height);
-        setStageBoxStyle((prev) => {
-          if (
-            prev.left === `${left}px` &&
-            prev.top === `${top}px` &&
-            prev.width === `${width}px` &&
-            prev.height === `${height}px`
-          ) {
-            return prev;
-          }
-          return {
-            position: 'absolute',
-            left: `${left}px`,
-            top: `${top}px`,
-            width: `${width}px`,
-            height: `${height}px`,
-          };
-        });
-        return;
-      }
+      sw.querySelector<HTMLElement>('.slide-layer') ||
+      sw;
+    const stRect = targetStage.getBoundingClientRect();
+    if (stRect.width > 20 && stRect.height > 20) {
+      const left = Math.round(stRect.left);
+      const top = Math.round(stRect.top);
+      const width = Math.round(stRect.width);
+      const height = Math.round(stRect.height);
+      setStageBoxStyle((prev) => {
+        if (
+          prev.left === `${left}px` &&
+          prev.top === `${top}px` &&
+          prev.width === `${width}px` &&
+          prev.height === `${height}px`
+        ) {
+          return prev;
+        }
+        return {
+          position: 'fixed',
+          left: `${left}px`,
+          top: `${top}px`,
+          width: `${width}px`,
+          height: `${height}px`,
+        };
+      });
+      return;
     }
     setStageBoxStyle((prev) => {
       if (prev.inset === 0) return prev;
       return {
-        position: 'absolute',
+        position: 'fixed',
         inset: 0,
         width: '100%',
         height: '100%',
@@ -317,8 +313,41 @@ export const StarlaPlayer: React.FC = React.memo(() => {
 
   useEffect(() => {
     updateStageBoxAlignment();
-    window.addEventListener('resize', updateStageBoxAlignment);
-    return () => window.removeEventListener('resize', updateStageBoxAlignment);
+    let timerA: number | null = null;
+    let timerB: number | null = null;
+    const onViewportSync = () => {
+      updateStageBoxAlignment();
+      if (timerA !== null) window.clearTimeout(timerA);
+      if (timerB !== null) window.clearTimeout(timerB);
+      timerA = window.setTimeout(updateStageBoxAlignment, 120);
+      timerB = window.setTimeout(updateStageBoxAlignment, 320);
+    };
+
+    window.addEventListener('resize', onViewportSync, { passive: true });
+    window.addEventListener('orientationchange', onViewportSync);
+    document.addEventListener('fullscreenchange', onViewportSync);
+    document.addEventListener('webkitfullscreenchange', onViewportSync);
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', onViewportSync);
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && slideWindowEl) {
+      ro = new ResizeObserver(() => {
+        updateStageBoxAlignment();
+      });
+      ro.observe(slideWindowEl);
+    }
+
+    return () => {
+      if (timerA !== null) window.clearTimeout(timerA);
+      if (timerB !== null) window.clearTimeout(timerB);
+      window.removeEventListener('resize', onViewportSync);
+      window.removeEventListener('orientationchange', onViewportSync);
+      document.removeEventListener('fullscreenchange', onViewportSync);
+      document.removeEventListener('webkitfullscreenchange', onViewportSync);
+      vv?.removeEventListener('resize', onViewportSync);
+      ro?.disconnect();
+    };
   }, [updateStageBoxAlignment, activePublicSlideId, slideWindowEl]);
 
   // Continuous Slide Tracker + Anti-Stuck Watchdog
@@ -662,6 +691,50 @@ export const StarlaPlayer: React.FC = React.memo(() => {
     }
   }, []);
 
+  const overlayCanvasElements: CanvasElement[] = useMemo(
+    () =>
+      customCanvasElements.filter((el) => {
+        if (!isCustomSlide) {
+          const nativeNodeExists = Boolean(
+            slideWindowEl?.querySelector(`[data-model-id="${el.id}"]`)
+          );
+          const pameranNativelyInjected =
+            el.id === 'btn_pameran_360_budaya' &&
+            (typeof window === 'undefined' ||
+              (window as unknown as Record<string, unknown>)
+                .__STARLA_PAMERAN_NATIVE_INJECTED__ !== false);
+          if (nativeNodeExists || pameranNativelyInjected) {
+            return false;
+          }
+        }
+        return true;
+      }),
+    [customCanvasElements, isCustomSlide, slideWindowEl]
+  );
+
+  const overlayPortalHostEl: HTMLElement | null = useMemo(() => {
+    if (!slideWindowEl || typeof document === 'undefined' || !document.body) {
+      return null;
+    }
+    let host = document.getElementById(
+      'starla-stage-overlay-host'
+    ) as HTMLElement | null;
+    if (!host || host.parentElement !== document.body) {
+      if (!host) {
+        host = document.createElement('div');
+        host.id = 'starla-stage-overlay-host';
+      }
+      host.style.position = 'fixed';
+      host.style.inset = '0';
+      host.style.width = '100%';
+      host.style.height = '100%';
+      host.style.pointerEvents = 'none';
+      host.style.zIndex = '999';
+      document.body.appendChild(host);
+    }
+    return host;
+  }, [slideWindowEl]);
+
   return (
     <>
       <div
@@ -679,10 +752,10 @@ export const StarlaPlayer: React.FC = React.memo(() => {
         aria-hidden="true"
       />
 
-      {/* LIVE OVERLAY PORTAL INSIDE #slide-window FOR CUSTOM/COPIED SLIDES, IMAGE BUTTONS & ANIMATED POPUP STATE */}
-      {slideWindowEl &&
+      {/* LIVE OVERLAY PORTAL OUTSIDE #slide-window FOR CUSTOM/COPIED SLIDES, IMAGE BUTTONS & ANIMATED POPUP STATE */}
+      {overlayPortalHostEl &&
         (isCustomSlide ||
-          customCanvasElements.length > 0 ||
+          overlayCanvasElements.length > 0 ||
           Boolean(inline360OverlayUrl) ||
           Boolean(activePopupState)) &&
         createPortal(
@@ -1149,6 +1222,23 @@ export const StarlaPlayer: React.FC = React.memo(() => {
 
             {/* 3. Custom Interactive Canvas Elements (100% Pure Image Buttons with Auto-Hover & UI Sound Effects) */}
             {customCanvasElements.map((el) => {
+              // If Storyline has natively rendered this element inside .slide-layer.base-layer (e.g. btn_pameran_360_budaya on 5iew2M44w24),
+              // let the native Storyline element handle rendering, layering, _default_Hover state, and rollover audio 100% natively.
+              if (
+                !isCustomSlide &&
+                slideWindowEl?.querySelector(`[data-model-id="${el.id}"]`)
+              ) {
+                return null;
+              }
+              const hasOpenStorylineLayer = Boolean(
+                !isCustomSlide &&
+                  slideWindowEl?.querySelector(
+                    '.slide-layer:not(.base-layer).shown'
+                  )
+              );
+              if (hasOpenStorylineLayer) {
+                return null;
+              }
               const hasImage = Boolean(el.imageUrl);
               const normalizedImgUrl = normalizePublicAssetUrl(el.imageUrl);
               const isHovered = hoveredCustomElId === el.id;
@@ -1159,9 +1249,11 @@ export const StarlaPlayer: React.FC = React.memo(() => {
                   data-starla-custom-button-id={el.id}
                   onMouseEnter={() => {
                     setHoveredCustomElId(el.id);
-                    const hSfx = el.hoverSfxUrl ?? 'sfx:hover-soft';
+                    const hSfx =
+                      el.hoverSfxUrl ??
+                      'story_content/6cE4jPpZoR1_44100_56_0.mp3';
                     if (hSfx && hSfx !== 'none') {
-                      playStudioSoundEffect(hSfx, 0.35);
+                      playStudioSoundEffect(hSfx, 0.75);
                     }
                   }}
                   onMouseLeave={() => setHoveredCustomElId(null)}
@@ -1198,20 +1290,18 @@ export const StarlaPlayer: React.FC = React.memo(() => {
                       ? 'none'
                       : '2px solid rgba(255,255,255,0.35)',
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    transformOrigin: '0 0',
                     transform:
                       isHovered && autoHoverEnabled
-                        ? 'scale(1.05) translateY(-1px)'
+                        ? 'scale(1.0288, 1.0294)'
                         : 'scale(1)',
                     filter: hasImage
-                      ? isHovered && autoHoverEnabled
-                        ? 'brightness(1.06) drop-shadow(0 12px 18px rgba(0, 0, 0, 0.34))'
-                        : 'drop-shadow(0 10px 15px rgba(0, 0, 0, 0.26))'
+                      ? 'none'
                       : isHovered && autoHoverEnabled
                       ? 'brightness(1.08) drop-shadow(0 8px 16px rgba(37, 99, 235, 0.42))'
                       : 'none',
-                    transition:
-                      'transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), filter 0.2s ease',
-                    zIndex: el.zIndex || 30,
+                    transition: 'none',
+                    zIndex: el.zIndex || 9,
                   }}
                 >
                   {hasImage ? (
@@ -1451,7 +1541,7 @@ export const StarlaPlayer: React.FC = React.memo(() => {
               </div>
             )}
           </div>,
-          slideWindowEl
+          overlayPortalHostEl
         )}
     </>
   );

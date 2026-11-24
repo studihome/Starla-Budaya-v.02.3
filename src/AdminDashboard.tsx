@@ -2440,7 +2440,7 @@ export const AdminDashboard: React.FC<{ children?: React.ReactNode }> = ({
 
       if (!isValid) {
         setLoginError(
-          'PIN otorisasi tidak valid. Silakan periksa kembali PIN Keamanan Studio Anda.'
+          'Kata sandi tidak valid. Silakan coba lagi.'
         );
         return;
       }

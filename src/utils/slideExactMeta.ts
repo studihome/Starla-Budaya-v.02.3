@@ -1572,10 +1572,14 @@ export async function loadExactSlideStageData(
 
         if (Array.isArray(o.objects) && o.objects.length > 0) {
           if (o.kind === 'stategroup') {
-            // Collect the primary child (default state) AND any attached objgroup (e.g. speech bubbles + question texts on Slide 40)
+            // Collect the primary child (ch.id === o.id, or idx === 0 if no self child exists) AND any attached objgroup (e.g. speech bubbles + question texts on Slide 40).
+            // This excludes hidden full-screen state dimmer backdrops (such as 60tcW366wKu, 5g8DMdjCEOQ, 5bZFP1lmazv at idx === 0 on Slide 37 / 604TQFYNuzG).
+            const hasSelfChild = o.objects.some((ch: any) => ch?.id === o.id);
             const visibleChildren = o.objects.filter(
               (ch: any, idx: number) =>
-                idx === 0 || ch.id === o.id || ch.kind === 'objgroup'
+                ch?.id === o.id ||
+                ch?.kind === 'objgroup' ||
+                (!hasSelfChild && idx === 0)
             );
             collectObjects(visibleChildren, xPos, yPos, effDepth);
           } else {
